@@ -1,0 +1,10 @@
+# Handle line endings automatically for text files
+* text=auto
+
+# Force Windows scripts to keep CRLF so they work on Windows
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Force shell scripts to keep LF so they work on Linux/Mac/Docker
+mvnw text eol=lf
+*.sh text eol=lf
