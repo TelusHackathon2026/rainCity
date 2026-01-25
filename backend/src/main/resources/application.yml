@@ -1,1 +1,21 @@
+spring:
+  application:
+    name: rainCity-hazard-detector
 
+server:
+  port: 8080
+
+app:
+  supabase:
+    url: https://pmfcphaxxcsovsuubqgu.supabase.co/
+    rest-url: ${app.supabase.url}/rest/v1
+    anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtZmNwaGF4eGNzb3ZzdXVicWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNzQ4NDUsImV4cCI6MjA4NDg1MDg0NX0.p7bioqxsQa2s_UCjA3NjoLW4c8Be58UU-KzPTiQbOnE
+  ai-model:
+    hf-api-url: https://sdl11-intersection-hazard-api.hf.space/api/predict
+    hf-token: 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
+  deepseek-api:
+    url: https://deepseekv32-3ca9s.paas.ai.telus.com/ 
+    access-token: a12a7d3705b12aeb46eb4cc8d77f5446
+
+hazard:
+  refresh-rate-ms: 10000

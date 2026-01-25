@@ -39,8 +39,12 @@ public class ExternalApiService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, CameraInfo> cameraCache = new HashMap<>();
+    private final String CUSTOM_IMAGES_FOLDER = "custom-images"; // Folder for custom uploads
 
     public record HazardTag(String label, double confidence) {
+    }
+
+    public record HazardDetectionResult(byte[] labeledImage, List<HazardTag> detections) {
     }
 
     record CameraInfo(String name, String url, String mapId, double lat, double lon) {
@@ -57,20 +61,31 @@ public class ExternalApiService {
                         node.get("mapid").asText(),
                         node.get("geo_point_2d").get("lat").asDouble(),
                         node.get("geo_point_2d").get("lon").asDouble());
+                
+                // Store by both name and mapid for flexible lookup
                 cameraCache.put(info.name().toLowerCase(), info);
+                cameraCache.put(info.mapId().toLowerCase(), info);
             }
-            System.out.println("✅ Loaded " + cameraCache.size() + " cameras");
+            System.out.println("✅ Loaded " + cameraCache.size() + " camera entries");
         } catch (Exception e) {
             System.err.println("❌ Load Error: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public List<byte[]> fetchCameraImages(String locationId) {
         CameraInfo camera = cameraCache.get(locationId.toLowerCase());
-        if (camera == null)
-            return Collections.emptyList();
+        
+        // If camera not found in data.json, check custom-images folder
+        if (camera == null) {
+            System.out.println("⚠️ Camera not found in data.json: " + locationId);
+            System.out.println("🔍 Checking custom-images folder...");
+            return fetchCustomImages(locationId);
+        }
 
         try {
+            System.out.println("🎥 Fetching camera: " + camera.name() + " from " + camera.url());
+            
             String html = webClient
                     .get()
                     .uri(camera.url())
@@ -87,6 +102,8 @@ public class ExternalApiService {
                 if (!src.startsWith("http"))
                     src = "https://trafficcams.vancouver.ca" + (src.startsWith("/") ? "" : "/") + src;
 
+                System.out.println("📥 Downloading image from: " + src);
+
                 byte[] img = webClient
                         .get()
                         .uri(src)
@@ -96,110 +113,296 @@ public class ExternalApiService {
                         .bodyToMono(byte[].class)
                         .block();
 
-                if (img != null && img.length > 2000)
+                if (img != null && img.length > 2000) {
                     images.add(img);
+                    System.out.println("✅ Image downloaded: " + img.length + " bytes");
+                }
             }
 
             System.out.println("✅ Fetched " + images.size() + " image(s)");
             return images;
         } catch (Exception e) {
-            System.err.println("Fetch error: " + e.getMessage());
+            System.err.println("❌ Fetch error: " + e.getMessage());
+            e.printStackTrace();
             return Collections.emptyList();
         }
     }
 
-    // HF Gradio Space API - 2-step process
-    public List<HazardTag> detectHazards(byte[] imageBytes) {
+    /**
+     * Fetch custom uploaded images from the custom-images folder
+     * Looks for files matching the location ID (with common image extensions)
+     */
+    private List<byte[]> fetchCustomImages(String locationId) {
         try {
-            System.out.println("🤖 Calling HF Gradio Space API (Step 1: POST)...");
+            // Sanitize location ID to create a valid filename
+            String sanitizedId = locationId.toLowerCase()
+                    .replaceAll("[^a-z0-9\\s-]", "")
+                    .replaceAll("\\s+", "-");
+            
+            System.out.println("🔍 Looking for custom image: " + sanitizedId);
+            
+            // Try different image extensions
+            String[] extensions = {".jpg", ".jpeg", ".png", ".webp"};
+            
+            for (String ext : extensions) {
+                String filename = CUSTOM_IMAGES_FOLDER + "/" + sanitizedId + ext;
+                
+                try {
+                    ClassPathResource resource = new ClassPathResource(filename);
+                    if (resource.exists()) {
+                        byte[] imageBytes = resource.getInputStream().readAllBytes();
+                        System.out.println("✅ Found custom image: " + filename + " (" + imageBytes.length + " bytes)");
+                        return List.of(imageBytes);
+                    }
+                } catch (Exception e) {
+                    // File doesn't exist, try next extension
+                    continue;
+                }
+            }
+            
+            // Also try exact match with original locationId
+            for (String ext : extensions) {
+                String filename = CUSTOM_IMAGES_FOLDER + "/" + locationId + ext;
+                
+                try {
+                    ClassPathResource resource = new ClassPathResource(filename);
+                    if (resource.exists()) {
+                        byte[] imageBytes = resource.getInputStream().readAllBytes();
+                        System.out.println("✅ Found custom image: " + filename + " (" + imageBytes.length + " bytes)");
+                        return List.of(imageBytes);
+                    }
+                } catch (Exception e) {
+                    continue;
+                }
+            }
+            
+            System.err.println("❌ No custom image found for: " + locationId);
+            System.err.println("💡 Place images in: src/main/resources/custom-images/");
+            System.err.println("💡 Filename should be: " + sanitizedId + ".jpg (or .png, .jpeg, .webp)");
+            return Collections.emptyList();
+            
+        } catch (Exception e) {
+            System.err.println("❌ Error fetching custom image: " + e.getMessage());
+            e.printStackTrace();
+            return Collections.emptyList();
+        }
+    }
 
-            // Step 1: Convert image to base64 and create Gradio-compatible request
-            String base64Image = "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(imageBytes);
+    // HF Gradio Space API - 2-step process with extensive debugging
+    public HazardDetectionResult detectHazards(byte[] imageBytes) {
+        try {
+            System.out.println("🤖 Starting Gradio API call...");
+            System.out.println("📊 Image size: " + imageBytes.length + " bytes");
 
-            Map<String, Object> imageData = Map.of("path", base64Image, "meta", Map.of("_type", "gradio.FileData"));
+            if (imageBytes.length > 500000) {
+                System.out.println("⚠️ WARNING: Image is large (" + imageBytes.length + " bytes), this might cause issues");
+            }
 
-            Map<String, Object> requestBody = Map.of("data", List.of(imageData));
+            // Step 1: Convert image to base64 with EXACT Gradio API format
+            String base64Image = Base64.getEncoder().encodeToString(imageBytes);
+            String dataUrl = "data:image/jpeg;base64," + base64Image;
+            System.out.println("✅ Base64 encoded (length: " + base64Image.length() + ")");
 
-            // POST to get event ID
+            // THIS IS THE EXACT FORMAT from Gradio API docs
+            Map<String, Object> imageDict = new HashMap<>();
+            imageDict.put("path", null);  // Not using local path
+            imageDict.put("url", dataUrl);  // Using base64 data URL
+            imageDict.put("size", imageBytes.length);
+            imageDict.put("orig_name", "camera_image.jpg");
+            imageDict.put("mime_type", "image/jpeg");
+            imageDict.put("is_stream", false);
+            imageDict.put("meta", Map.of("_type", "gradio.FileData"));
+
+            Map<String, Object> requestBody = Map.of("data", List.of(imageDict));
+
+            System.out.println("📤 Sending POST request to Gradio...");
+
+            // POST to get event ID with better error handling
             String postResponse = webClient
                     .post()
                     .uri("https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards")
                     .header("Content-Type", "application/json")
                     .bodyValue(requestBody)
                     .retrieve()
+                    .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        clientResponse -> clientResponse
+                            .bodyToMono(String.class)
+                            .flatMap(errorBody -> {
+                                System.err.println("❌ Gradio POST Error (" + clientResponse.statusCode() + "): " + errorBody);
+                                return Mono.error(new RuntimeException("Gradio API error: " + errorBody));
+                            })
+                    )
                     .bodyToMono(String.class)
                     .block();
 
-            if (postResponse == null) {
-                System.err.println("❌ No response from HF Space POST");
-                return Collections.emptyList();
+            if (postResponse == null || postResponse.trim().isEmpty()) {
+                System.err.println("❌ Empty response from Gradio POST");
+                return new HazardDetectionResult(imageBytes, Collections.emptyList());
             }
 
             System.out.println("📥 POST Response: " + postResponse);
 
-            // Extract event_id from response
+            // Extract event_id
             JsonNode postJson = objectMapper.readTree(postResponse);
+            
+            if (!postJson.has("event_id")) {
+                System.err.println("❌ No event_id in response: " + postResponse);
+                return new HazardDetectionResult(imageBytes, Collections.emptyList());
+            }
+            
             String eventId = postJson.get("event_id").asText();
-
             System.out.println("✅ Got event ID: " + eventId);
-            System.out.println("🤖 Step 2: GET results...");
 
-            // Step 2: GET results using event ID
-            // Wait a bit for processing
-            Thread.sleep(1000);
-
-            String getResponse = webClient
-                    .get()
-                    .uri(
-                            "https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards/"
-                                    + eventId)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
-
-            if (getResponse == null) {
-                System.err.println("❌ No response from HF Space GET");
-                return Collections.emptyList();
+            // Step 2: Poll for results with retries
+            System.out.println("🤖 Waiting for processing...");
+            
+            String getResponse = null;
+            int maxRetries = 10;
+            int retryCount = 0;
+            
+            while (retryCount < maxRetries) {
+                Thread.sleep(1000); // Wait 1 second between attempts
+                
+                System.out.println("🔄 Attempt " + (retryCount + 1) + "/" + maxRetries);
+                
+                try {
+                    getResponse = webClient
+                            .get()
+                            .uri("https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards/" + eventId)
+                            .retrieve()
+                            .onStatus(
+                                status -> status.is4xxClientError() || status.is5xxServerError(),
+                                clientResponse -> clientResponse
+                                    .bodyToMono(String.class)
+                                    .flatMap(errorBody -> {
+                                        System.err.println("❌ Gradio GET Error (" + clientResponse.statusCode() + "): " + errorBody);
+                                        return Mono.error(new RuntimeException("Gradio GET error: " + errorBody));
+                                    })
+                            )
+                            .bodyToMono(String.class)
+                            .block();
+                    
+                    if (getResponse != null && getResponse.contains("data:")) {
+                        System.out.println("✅ Got response with data!");
+                        break;
+                    }
+                    
+                    System.out.println("⏳ Still processing... (response: " + 
+                        (getResponse != null ? getResponse.substring(0, Math.min(100, getResponse.length())) : "null") + ")");
+                    
+                } catch (Exception e) {
+                    System.err.println("⚠️ GET attempt failed: " + e.getMessage());
+                }
+                
+                retryCount++;
             }
 
-            System.out.println(
-                    "📥 GET Response: " + getResponse.substring(0, Math.min(500, getResponse.length())));
+            if (getResponse == null || !getResponse.contains("data:")) {
+                System.err.println("❌ No valid response after " + maxRetries + " attempts");
+                return new HazardDetectionResult(imageBytes, Collections.emptyList());
+            }
 
-            // Parse the streaming response (it comes as SSE - Server Sent Events)
+            System.out.println("📥 Full GET Response length: " + getResponse.length());
+            System.out.println("📥 First 500 chars: " + getResponse.substring(0, Math.min(500, getResponse.length())));
+
+            // Parse SSE response
             List<HazardTag> detections = new ArrayList<>();
+            byte[] labeledImage = imageBytes;
             String[] lines = getResponse.split("\n");
+            
+            System.out.println("📋 Processing " + lines.length + " response lines...");
 
             for (String line : lines) {
+                if (line.startsWith("event: error")) {
+                    System.err.println("❌❌❌ GRADIO SPACE ERROR ❌❌❌");
+                    System.err.println("The Gradio Space encountered an error processing the image.");
+                    System.err.println("Possible causes:");
+                    System.err.println("  1. Space is sleeping - Visit https://sdl11-intersection-hazard-api.hf.space/ to wake it");
+                    System.err.println("  2. Model file (best.pt) is missing or corrupted");
+                    System.err.println("  3. Image is too large or in wrong format");
+                    System.err.println("  4. Python code has a bug");
+                    System.err.println("Full error response: " + getResponse);
+                    System.err.println("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
+                    return new HazardDetectionResult(imageBytes, Collections.emptyList());
+                }
+                
                 if (line.startsWith("data: ")) {
-                    String jsonData = line.substring(6); // Remove "data: " prefix
+                    String jsonData = line.substring(6);
+                    
+                    // Skip null data
+                    if (jsonData.trim().equals("null")) {
+                        System.out.println("⚠️ Skipping null data line");
+                        continue;
+                    }
+                    
+                    System.out.println("🔍 Processing data line: " + jsonData.substring(0, Math.min(200, jsonData.length())));
+                    
                     try {
                         JsonNode eventData = objectMapper.readTree(jsonData);
 
-                        // Look for the final result
                         if (eventData.isArray() && eventData.size() >= 2) {
-                            JsonNode detectionData = eventData.get(1); // Second element contains detection data
+                            System.out.println("✅ Found array with " + eventData.size() + " elements");
+                            
+                            // First element: labeled image
+                            JsonNode imageNode = eventData.get(0);
+                            System.out.println("🖼️ Image node type: " + imageNode.getNodeType());
+                            System.out.println("🖼️ Image node content: " + imageNode.toString().substring(0, Math.min(300, imageNode.toString().length())));
+                            
+                            if (imageNode != null && imageNode.has("url")) {
+                                String imageUrl = imageNode.get("url").asText();
+                                System.out.println("📥 Downloading labeled image from: " + imageUrl);
+                                
+                                byte[] downloadedImage = webClient
+                                        .get()
+                                        .uri(imageUrl)
+                                        .retrieve()
+                                        .bodyToMono(byte[].class)
+                                        .block();
+                                
+                                if (downloadedImage != null && downloadedImage.length > 0) {
+                                    labeledImage = downloadedImage;
+                                    System.out.println("✅ Downloaded labeled image (" + labeledImage.length + " bytes)");
+                                }
+                            } else if (imageNode != null && imageNode.has("path")) {
+                                String path = imageNode.get("path").asText();
+                                System.out.println("🖼️ Image path: " + path.substring(0, Math.min(100, path.length())));
+                                
+                                if (path.startsWith("data:image")) {
+                                    String base64Data = path.split(",")[1];
+                                    labeledImage = Base64.getDecoder().decode(base64Data);
+                                    System.out.println("✅ Extracted labeled image from base64 (" + labeledImage.length + " bytes)");
+                                }
+                            }
 
+                            // Second element: detections
+                            JsonNode detectionData = eventData.get(1);
+                            System.out.println("🎯 Detection node type: " + detectionData.getNodeType());
+                            System.out.println("🎯 Detection data: " + detectionData.toString());
+                            
                             if (detectionData.isObject()) {
                                 parseDetectionResults(detectionData, detections);
                             } else if (detectionData.isArray()) {
+                                System.out.println("📊 Processing " + detectionData.size() + " detection items");
                                 for (JsonNode item : detectionData) {
                                     parseDetection(item, detections);
                                 }
                             }
                         }
                     } catch (Exception e) {
-                        // Skip invalid JSON lines
+                        System.err.println("⚠️ Error parsing line: " + e.getMessage());
+                        e.printStackTrace();
                     }
                 }
             }
 
-            System.out.println("✅ Parsed " + detections.size() + " detections");
-            return detections;
+            System.out.println("✅ Final result: " + detections.size() + " detections, image size: " + labeledImage.length);
+            return new HazardDetectionResult(labeledImage, detections);
 
         } catch (Exception e) {
-            System.err.println("❌ HF Detection error: " + e.getMessage());
+            System.err.println("❌ CRITICAL ERROR in detectHazards: " + e.getMessage());
             e.printStackTrace();
-            return Collections.emptyList();
+            return new HazardDetectionResult(imageBytes, Collections.emptyList());
         }
     }
 
@@ -240,6 +443,7 @@ public class ExternalApiService {
 
         if (label != null) {
             detections.add(new HazardTag(label, confidence));
+            System.out.println("   ➡️ Detected: " + label + " (confidence: " + confidence + ")");
         }
     }
 
@@ -282,6 +486,11 @@ public class ExternalApiService {
     }
 
     public String generateDescription(List<HazardTag> detections, boolean isSpike, double score) {
+        // If no detections, return a simple message
+        if (detections.isEmpty()) {
+            return "No hazards detected at this location. Traffic conditions appear normal.";
+        }
+        
         try {
             String tagsStr = detections.stream()
                     .map(t -> t.label() + " (" + String.format("%.2f", t.confidence()) + ")")
@@ -321,7 +530,7 @@ public class ExternalApiService {
 
             if (response == null) {
                 System.err.println("❌ No response from DeepSeek");
-                return "AI Analysis unavailable.";
+                return "Detected: " + tagsStr + ". Manual assessment recommended.";
             }
 
             System.out.println("📥 DeepSeek response received");
@@ -335,12 +544,16 @@ public class ExternalApiService {
                 }
             }
 
-            return "AI Analysis unavailable.";
+            return "Detected: " + tagsStr + ". Manual assessment recommended.";
 
         } catch (Exception e) {
             System.err.println("DeepSeek error: " + e.getMessage());
-            e.printStackTrace();
-            return "AI Analysis unavailable.";
+            // Return a fallback description instead of generic error
+            String tagsStr = detections.stream()
+                    .map(HazardTag::label)
+                    .reduce((a, b) -> a + ", " + b)
+                    .orElse("none");
+            return "Detected: " + tagsStr + ". Score: " + score + (isSpike ? " (SPIKE ALERT)" : "");
         }
     }
 
@@ -357,7 +570,9 @@ public class ExternalApiService {
             // 1. STRICT PAYLOAD: Only send exactly what the DB has
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("location_id", hazard.getLocationString());
-            payload.put("score", hazard.getScore());
+            double dbScore = fetchHistoricalAverage(hazard.getLocationString()); // from DB
+            double currentScore = hazard.getScore();
+            payload.put("score", dbScore + currentScore / 2);
             payload.put("description", hazard.getDescription());
             payload.put("timestamp", java.time.OffsetDateTime.now().toString());
 
@@ -396,6 +611,7 @@ public class ExternalApiService {
 
         } catch (Exception e) {
             System.err.println("❌ CRITICAL SYNC ERROR: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }

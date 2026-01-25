@@ -6,10 +6,11 @@ import { Activity, Wifi, WifiOff, UserX, Flame, TreeDeciduous, Users } from 'luc
 import Header from './Header';
 
 const MONITORED_INTERSECTIONS = [
-  'Main St and E Hastings St',
+  'Granville St and W Broadway',
   'McLean Drive and Powell St"',
   'Seymour St and Nelson St',
-  'Knight St and SE Marine Drive'
+  'Knight St and SE Marine Drive',
+  'Sesame St'
 ];
 
 export default function TrafficDashboard() {
