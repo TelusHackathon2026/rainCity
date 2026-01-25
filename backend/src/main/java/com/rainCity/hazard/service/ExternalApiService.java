@@ -3,10 +3,9 @@ package com.rainCity.hazard.service;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
 import java.io.InputStream;
 import java.util.*;
-import javax.annotation.PostConstruct;
-
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
@@ -16,14 +15,19 @@ import org.springframework.web.reactive.function.client.WebClient;
 @Service
 public class ExternalApiService {
 
-    public record HazardTag(String label, double score) {} 
-    
+    public record HazardTag(String label, double score) {
+    }
+
     public record CameraInfo(String name, String url, String mapId, double lat, double lon) {
-        public static CameraInfoBuilder builder() { return new CameraInfoBuilder(); }
+        public static CameraInfoBuilder builder() {
+            return new CameraInfoBuilder();
+        }
     }
 
     public record Coordinates(double lat, double lng) {
-        public static CoordinatesBuilder builder() { return new CoordinatesBuilder(); }
+        public static CoordinatesBuilder builder() {
+            return new CoordinatesBuilder();
+        }
     }
 
     @Value("${app.ai-model.hf-api-url}")
@@ -76,19 +80,23 @@ public class ExternalApiService {
 
     public List<byte[]> fetchCameraImages(String locationId) {
         CameraInfo camera = cameraCache.get(locationId.toLowerCase());
-        if (camera == null) return new ArrayList<>();
+        if (camera == null)
+            return new ArrayList<>();
 
         try {
             String htmlContent = webClient.get().uri(camera.url()).retrieve().bodyToMono(String.class).block();
-            if (htmlContent == null) return new ArrayList<>();
+            if (htmlContent == null)
+                return new ArrayList<>();
 
             List<String> imageUrls = extractImageUrls(htmlContent, camera.url());
             List<byte[]> images = new ArrayList<>();
 
             for (int i = 0; i < Math.min(4, imageUrls.size()); i++) {
                 try {
-                    byte[] imageBytes = webClient.get().uri(imageUrls.get(i)).retrieve().bodyToMono(byte[].class).block();
-                    if (imageBytes != null) images.add(imageBytes);
+                    byte[] imageBytes = webClient.get().uri(imageUrls.get(i)).retrieve().bodyToMono(byte[].class)
+                            .block();
+                    if (imageBytes != null)
+                        images.add(imageBytes);
                 } catch (Exception e) {
                     System.err.println("Failed to download image: " + imageUrls.get(i));
                 }
@@ -102,7 +110,7 @@ public class ExternalApiService {
     private List<String> extractImageUrls(String html, String baseUrl) {
         List<String> urls = new ArrayList<>();
         String base = baseUrl.substring(0, baseUrl.lastIndexOf("/") + 1);
-        
+
         // Slightly more robust than simple split
         String[] parts = html.split("<img");
         for (String part : parts) {
@@ -118,7 +126,8 @@ public class ExternalApiService {
                         }
                         urls.add(url);
                     }
-                } catch (Exception e) { /* skip malformed tags */ }
+                } catch (Exception e) {
+                    /* skip malformed tags */ }
             }
         }
         return urls;
@@ -126,17 +135,19 @@ public class ExternalApiService {
 
     public List<HazardTag> detectHazards(byte[] imageBytes) {
         try {
-            String jsonResponse = webClient.post()
-                .uri(hfUrl) 
-                .header("Authorization", "Bearer " + hfToken)
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .bodyValue(imageBytes)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+            String jsonResponse = webClient
+                    .post()
+                    .uri(hfUrl)
+                    .header("Authorization", "Bearer " + hfToken)
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .bodyValue(imageBytes)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
             // Note: Use "score" in HazardTag because that is standard HF output
-            return objectMapper.readValue(jsonResponse, new TypeReference<List<HazardTag>>(){});
+            return objectMapper.readValue(jsonResponse, new TypeReference<List<HazardTag>>() {
+            });
         } catch (Exception e) {
             return new ArrayList<>();
         }
@@ -144,21 +155,29 @@ public class ExternalApiService {
 
     public Coordinates getCameraCoordinates(String locationId) {
         CameraInfo camera = cameraCache.get(locationId.toLowerCase());
-        if (camera != null) return new Coordinates(camera.lat(), camera.lon());
+        if (camera != null)
+            return new Coordinates(camera.lat(), camera.lon());
         return new Coordinates(49.2827, -123.1207);
     }
 
     public double fetchHistoricalAverage(String locationId) {
         try {
-            String response = webClient.get()
-                .uri(supabaseUrl + "/hazards?location_id=eq." + locationId + "&order=timestamp.desc&limit=50")
-                .header("apikey", supabaseKey)
-                .header("Authorization", "Bearer " + supabaseKey)
-                .retrieve()
-                .bodyToMono(String.class).block();
+            String response = webClient
+                    .get()
+                    .uri(
+                            supabaseUrl
+                                    + "/hazards?location_id=eq."
+                                    + locationId
+                                    + "&order=timestamp.desc&limit=50")
+                    .header("apikey", supabaseKey)
+                    .header("Authorization", "Bearer " + supabaseKey)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
             JsonNode records = objectMapper.readTree(response);
-            if (!records.isArray() || records.isEmpty()) return 0.0;
+            if (!records.isArray() || records.isEmpty())
+                return 0.0;
 
             double sum = 0;
             int count = 0;
@@ -176,28 +195,38 @@ public class ExternalApiService {
 
     public String generateDescription(List<HazardTag> tags, boolean isSpike, double score) {
         String tagSummary = tags.stream()
-                                .map(t -> t.label() + " (" + String.format("%.2f", t.score()) + ")")
-                                .reduce((a, b) -> a + ", " + b)
-                                .orElse("No specific hazards");
+                .map(t -> t.label() + " (" + String.format("%.2f", t.score()) + ")")
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("No specific hazards");
 
-        String prompt = isSpike 
-            ? String.format("A significant spike in traffic hazards detected. Tags: %s. Score: %.2f. Identify the cause and impact concisely (2-3 sentences).", tagSummary, score)
-            : String.format("Factual summary of traffic conditions. Tags: %s. Score: %.2f. Describe the situation in 2-3 sentences.", tagSummary, score);
+        String prompt = isSpike
+                ? String.format(
+                        "A significant spike in traffic hazards detected. Tags: %s. Score: %.2f. Identify"
+                                + " the cause and impact concisely (2-3 sentences).",
+                        tagSummary, score)
+                : String.format(
+                        "Factual summary of traffic conditions. Tags: %s. Score: %.2f. Describe the"
+                                + " situation in 2-3 sentences.",
+                        tagSummary, score);
 
         Map<String, Object> body = Map.of(
-            "messages", List.of(Map.of("role", "user", "content", prompt)),
-            "model", "deepseek-chat",
-            "max_tokens", 150
-        );
+                "messages",
+                List.of(Map.of("role", "user", "content", prompt)),
+                "model",
+                "deepseek-chat",
+                "max_tokens",
+                150);
 
         try {
-            String response = webClient.post()
-                .uri(deepSeekUrl)
-                .header("Authorization", "Bearer " + deepSeekToken)
-                .header("Content-Type", "application/json")
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class).block();
+            String response = webClient
+                    .post()
+                    .uri(deepSeekUrl)
+                    .header("Authorization", "Bearer " + deepSeekToken)
+                    .header("Content-Type", "application/json")
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
 
             JsonNode root = objectMapper.readTree(response);
             return root.path("choices").get(0).path("message").path("content").asText().trim();
@@ -208,19 +237,54 @@ public class ExternalApiService {
 
     // --- Simple Builders for compatibility ---
     private static class CameraInfoBuilder {
-        private String name, url, mapId; double lat, lon;
-        public CameraInfoBuilder name(String n) { this.name = n; return this; }
-        public CameraInfoBuilder url(String u) { this.url = u; return this; }
-        public CameraInfoBuilder mapId(String m) { this.mapId = m; return this; }
-        public CameraInfoBuilder lat(double l) { this.lat = l; return this; }
-        public CameraInfoBuilder lon(double l) { this.lon = l; return this; }
-        public CameraInfo build() { return new CameraInfo(name, url, mapId, lat, lon); }
+        private String name, url, mapId;
+        double lat, lon;
+
+        public CameraInfoBuilder name(String n) {
+            this.name = n;
+            return this;
+        }
+
+        public CameraInfoBuilder url(String u) {
+            this.url = u;
+            return this;
+        }
+
+        public CameraInfoBuilder mapId(String m) {
+            this.mapId = m;
+            return this;
+        }
+
+        public CameraInfoBuilder lat(double l) {
+            this.lat = l;
+            return this;
+        }
+
+        public CameraInfoBuilder lon(double l) {
+            this.lon = l;
+            return this;
+        }
+
+        public CameraInfo build() {
+            return new CameraInfo(name, url, mapId, lat, lon);
+        }
     }
 
     private static class CoordinatesBuilder {
         private double lat, lng;
-        public CoordinatesBuilder lat(double l) { this.lat = l; return this; }
-        public CoordinatesBuilder lng(double l) { this.lng = l; return this; }
-        public Coordinates build() { return new Coordinates(lat, lng); }
+
+        public CoordinatesBuilder lat(double l) {
+            this.lat = l;
+            return this;
+        }
+
+        public CoordinatesBuilder lng(double l) {
+            this.lng = l;
+            return this;
+        }
+
+        public Coordinates build() {
+            return new Coordinates(lat, lng);
+        }
     }
 }
