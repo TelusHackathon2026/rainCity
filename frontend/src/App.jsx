@@ -129,9 +129,9 @@ export default function TrafficDashboard() {
   };
 
   const getSeverityIcon = (severity) => {
-    if (severity === 'CRITICAL') return '🔴';
-    if (severity === 'HIGH') return '🟠';
-    return '🟡';
+    if (severity === 'CRITICAL') return '';
+    if (severity === 'HIGH') return '';
+    return '';
   };
 
   return (
