@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 @Service
 public class ExternalApiService {
@@ -353,36 +354,48 @@ public class ExternalApiService {
 
     public void saveHazardRecord(HazardResponse hazard) {
         try {
-            // Create the payload for Supabase
-            // Ensure keys match your Supabase column names exactly
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("location_id", hazard.getLocationString()); // Using name as ID
+            // 1. STRICT PAYLOAD: Only send exactly what the DB has
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("location_id", hazard.getLocationString());
             payload.put("score", hazard.getScore());
             payload.put("description", hazard.getDescription());
-            payload.put("spike", hazard.isSpike());
-            payload.put("timestamp", hazard.getTimestamp());
-            payload.put("lat", hazard.getCoords().getLat());
-            payload.put("lng", hazard.getCoords().getLng());
+            payload.put("timestamp", java.time.OffsetDateTime.now().toString());
 
-            System.out.println("💾 Saving/Updating hazard for: " + hazard.getLocationString());
+            System.out.println("💾 Syncing: " + hazard.getLocationString());
 
-            webClient
+            // 2. The UPSERT call
+            String response = webClient
                     .post()
-                    .uri(
-                            supabaseUrl
-                                    + "/hazards?on_conflict=location_id") // location_id must be UNIQUE in Supabase
+                    .uri(supabaseUrl + "/hazards?on_conflict=location_id")
                     .header("apikey", supabaseKey)
                     .header("Authorization", "Bearer " + supabaseKey)
                     .header("Content-Type", "application/json")
-                    .header("Prefer", "resolution=merge-duplicates") // This handles the "Update" part
+                    .header("Prefer", "resolution=merge-duplicates,return=representation")
                     .bodyValue(payload)
                     .retrieve()
+                    .onStatus(
+                            status -> status.is4xxClientError(),
+                            clientResponse -> clientResponse
+                                    .bodyToMono(String.class)
+                                    .flatMap(
+                                            errorBody -> Mono.error(
+                                                    new RuntimeException(
+                                                            "Supabase rejected data: " + errorBody))))
                     .bodyToMono(String.class)
                     .block();
 
-            System.out.println("✅ Database updated successfully.");
+            // 3. Extract the UUID so React can render the card
+            if (response != null) {
+                JsonNode responseJson = objectMapper.readTree(response);
+                if (responseJson.isArray() && !responseJson.isEmpty()) {
+                    String dbUuid = responseJson.get(0).get("id").asText();
+                    hazard.setId(dbUuid);
+                    System.out.println("✅ DB Synced! UUID is: " + dbUuid);
+                }
+            }
+
         } catch (Exception e) {
-            System.err.println("❌ Database save error: " + e.getMessage());
+            System.err.println("❌ CRITICAL SYNC ERROR: " + e.getMessage());
         }
     }
 }

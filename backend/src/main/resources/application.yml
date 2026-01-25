@@ -10,7 +10,7 @@ app:
     url: https://pmfcphaxxcsovsuubqgu.supabase.co
     # Accessing the REST API interface of Supabase
     rest-url: ${app.supabase.url}/rest/v1
-    anon-key: sb_publishable_3wFlYvfiZlLQOein07n37Q_hjse-w3Y
+    anon-key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtZmNwaGF4eGNzb3ZzdXVicWd1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkyNzQ4NDUsImV4cCI6MjA4NDg1MDg0NX0.p7bioqxsQa2s_UCjA3NjoLW4c8Be58UU-KzPTiQbOnE
   
   ai-model:
     # Based on your HF Space: https://huggingface.co/spaces/sdl11/intersection-hazard-api

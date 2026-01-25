@@ -2,9 +2,8 @@ package com.rainCity.hazard.service;
 
 import com.rainCity.hazard.model.HazardModels.*;
 import java.time.Instant;
-import java.util.Base64; // Added for image conversion
+import java.util.Base64;
 import java.util.List;
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -19,34 +18,35 @@ public class ProcessingService {
   public HazardResponse processLocation(String locationStr) {
     // 1. Fetch images from the Vancouver camera
     List<byte[]> images = apiService.fetchCameraImages(locationStr);
-    if (images.isEmpty())
+    if (images.isEmpty()) {
+      System.out.println("⚠️ No images found for: " + locationStr);
       return null;
+    }
 
     // 2. Use the first image for analysis
     byte[] rawImage = images.get(0);
 
-    // 3. Get detections from Hugging Face
+    // 3. Get detections from Hugging Face Gradio Space
     List<ExternalApiService.HazardTag> detections = apiService.detectHazards(rawImage);
 
     // 4. Transform tags and calculate scores
     DetailedTags details = analyzeTags(detections);
     double currentScore = calculateHazardScore(details);
 
-    // 5. Historical Analysis
+    // 5. Historical Analysis from Supabase
     double averageScore = apiService.fetchHistoricalAverage(locationStr);
-    double delta = currentScore - averageScore;
+    double delta = Math.max(0, currentScore - averageScore);
     boolean isSpike = delta > (averageScore * 0.2) && currentScore > 10;
 
-    // 6. AI Description logic (now handles spike vs no-spike prompts)
+    // 6. AI Description logic (DeepSeek)
     String description = apiService.generateDescription(detections, isSpike, currentScore);
 
-    // 7. Prepare Image for Frontend
-    // Since HF/Vancouver provides the image, we just encode the bytes to Base64
-    String base64Image = Base64.getEncoder().encodeToString(rawImage);
+    // 7. Prepare Image for Frontend (Added Data URI prefix)
+    String base64Image = "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(rawImage);
 
     // 8. Build final response
-    return HazardResponse.builder()
-        .id(UUID.randomUUID().toString())
+    HazardResponse response = HazardResponse.builder()
+        .id(locationStr)
         .locationString(locationStr)
         .coords(apiService.getCameraCoordinates(locationStr))
         .score(currentScore)
@@ -58,27 +58,36 @@ public class ProcessingService {
         .imageBase64(base64Image)
         .info(details)
         .build();
+
+    // 9. DATABASE UPDATE: Persist the results to Supabase
+    // This ensures the next "historical average" check includes this current
+    // detection
+    apiService.saveHazardRecord(response);
+
+    return response;
   }
 
   private DetailedTags analyzeTags(List<ExternalApiService.HazardTag> detections) {
     DetailedTags tags = DetailedTags.builder()
         .rawTags(detections.stream().map(ExternalApiService.HazardTag::label).toList())
+        .numberOfDebrisItems(0) // Initialize counts to 0
+        .pedestrianAmount(0)
         .build();
 
     for (ExternalApiService.HazardTag d : detections) {
       String label = d.label().toLowerCase();
-      // Scoring Logic
+
       if (label.contains("person") && label.contains("lay"))
         tags.setPersonLaying(true);
       if (label.contains("cone"))
         tags.setCones(true);
       if (label.contains("debris"))
         tags.setNumberOfDebrisItems(tags.getNumberOfDebrisItems() + 1);
-      if (label.contains("person"))
+      if (label.contains("person") && !label.contains("lay"))
         tags.setPedestrianAmount(tags.getPedestrianAmount() + 1);
       if (label.contains("tree"))
         tags.setFallenTree(true);
-      if (label.contains("crash") || label.contains("accident"))
+      if (label.contains("crash") || label.contains("accident") || label.contains("wreck"))
         tags.setAccident(true);
     }
     return tags;
