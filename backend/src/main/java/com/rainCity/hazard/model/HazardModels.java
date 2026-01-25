@@ -1,5 +1,6 @@
 package com.rainCity.hazard.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 import lombok.Builder;
 import lombok.Data;
@@ -9,25 +10,41 @@ public class HazardModels {
   // 1. Message from Frontend
   @Data
   public static class LocationRequest {
+@JsonProperty("intersections")
     private List<String> locations;
 
     // Add this manually
     public List<String> getLocations() {
       return locations;
     }
+
+    // Explicit setter for Jackson
+    public void setLocations(List<String> locations) {
+      this.locations = locations;
+    }
   }
 
   public static class HazardResponse {
     private String id;
+
+    @JsonProperty("location") // React expects 'location'
     private String locationString;
+
     private Coordinates coords;
     private double score;
+
+    @JsonProperty("average") // React expects 'average'
     private double avg;
+
     private double delta;
     private boolean spike;
     private String description;
     private String timestamp;
+
+    @JsonProperty("img") // React expects 'img'
     private String imageBase64;
+
+    @JsonProperty("detectedObjects") // React expects 'detectedObjects'
     private DetailedTags info;
 
     // Constructor
@@ -271,12 +288,21 @@ public class HazardModels {
   }
 
   public static class DetailedTags {
+    @JsonProperty("person_laying") // React expects 'person_laying'
     private boolean personLaying = false;
+
     private boolean cones = false;
     private boolean accident = false;
+
+    @JsonProperty("debris") // React expects 'debris'
     private int numberOfDebrisItems = 0;
+
+    @JsonProperty("people") // React expects 'people'
     private int pedestrianAmount = 0;
+
+    @JsonProperty("tree") // React expects 'tree'
     private boolean fallenTree = false;
+
     private List<String> rawTags;
 
     // Getters

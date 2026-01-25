@@ -1,15 +1,15 @@
 package com.rainCity.hazard.service;
 
-import com.rainCity.hazard.model.HazardModels;
 import com.rainCity.hazard.model.HazardModels.*;
 import java.time.Instant;
-import java.util.Base64;
+import java.util.Base64; // Added for image conversion
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ProcessingService {
+
   private final ExternalApiService apiService;
 
   public ProcessingService(ExternalApiService apiService) {
@@ -41,13 +41,14 @@ public class ProcessingService {
     String description = apiService.generateDescription(detections, isSpike, currentScore);
 
     // 7. Prepare Image for Frontend
+    // Since HF/Vancouver provides the image, we just encode the bytes to Base64
     String base64Image = Base64.getEncoder().encodeToString(rawImage);
 
-    // 8. Build final response - USE THE HELPER HERE
+    // 8. Build final response
     return HazardResponse.builder()
         .id(UUID.randomUUID().toString())
         .locationString(locationStr)
-        .coords(convertCoordinates(apiService.getCameraCoordinates(locationStr)))
+        .coords(apiService.getCameraCoordinates(locationStr))
         .score(currentScore)
         .avg(averageScore)
         .delta(delta)
@@ -66,7 +67,7 @@ public class ProcessingService {
 
     for (ExternalApiService.HazardTag d : detections) {
       String label = d.label().toLowerCase();
-
+      // Scoring Logic
       if (label.contains("person") && label.contains("lay"))
         tags.setPersonLaying(true);
       if (label.contains("cone"))
@@ -80,7 +81,6 @@ public class ProcessingService {
       if (label.contains("crash") || label.contains("accident"))
         tags.setAccident(true);
     }
-
     return tags;
   }
 
@@ -97,16 +97,5 @@ public class ProcessingService {
     score += (tags.getNumberOfDebrisItems() * 5);
     score += (tags.getPedestrianAmount() * 0.5);
     return score;
-  }
-
-  // ADD THE HELPER METHOD HERE AT THE BOTTOM
-  private HazardModels.Coordinates convertCoordinates(
-      ExternalApiService.Coordinates externalCoords) {
-    if (externalCoords == null)
-      return null;
-    return HazardModels.Coordinates.builder()
-        .lat(externalCoords.lat())
-        .lng(externalCoords.lng())
-        .build();
   }
 }

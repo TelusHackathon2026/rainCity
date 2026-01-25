@@ -30,11 +30,11 @@ export default function TrafficDashboard() {
   // Calculate severity from spike and delta
   const calculateSeverity = (alert) => {
     if (!alert.spike) return 'NORMAL';
-    
+
     if (alert.delta > 50) return 'CRITICAL';
     if (alert.delta > 25) return 'HIGH';
     if (alert.delta > 10) return 'MEDIUM';
-    
+
     return 'NORMAL';
   };
 
@@ -55,16 +55,16 @@ export default function TrafficDashboard() {
   useEffect(() => {
     // Create STOMP client
     const client = new Client({
-      webSocketFactory: () => new SockJS('http://localhost:8080/ws'), // ← CHANGE THIS to your backend URL
-      
+      webSocketFactory: () => new SockJS('http://localhost:8080/ws/hazards'), // ← CHANGE THIS to your backend URL
+
       connectHeaders: {
         // Add any auth headers here if needed
       },
-      
+
       debug: (str) => {
         console.log('STOMP:', str);
       },
-      
+
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,
@@ -77,10 +77,10 @@ export default function TrafficDashboard() {
         // Subscribe to traffic alerts topic
         client.subscribe('/topic/traffic-alerts', (message) => {
           console.log('📨 Received alert:', message.body);
-          
+
           try {
             const data = JSON.parse(message.body);
-            
+
             // Handle single alert or array of alerts
             if (Array.isArray(data)) {
               // Multiple alerts received (initial load or bulk update)
@@ -105,7 +105,7 @@ export default function TrafficDashboard() {
               });
               console.log(`✅ Alert for ${data.location}`);
             }
-            
+
             setLastUpdated(new Date().toLocaleTimeString());
           } catch (err) {
             console.error('❌ Error parsing message:', err);
@@ -172,7 +172,7 @@ export default function TrafficDashboard() {
           <div className="text-red-400 text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold text-white mb-2">Connection Failed</h2>
           <p className="text-slate-400 mb-4">{error}</p>
-          <button 
+          <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors"
           >
@@ -262,7 +262,7 @@ export default function TrafficDashboard() {
       )}
 
       {/* Header */}
-      <Header 
+      <Header
         lastUpdated={lastUpdated || "Waiting for data..."}
         activeAlerts={activeAlerts.length}
         showMapButton={true}
@@ -384,9 +384,8 @@ function StatCard({ label, value, color, delay }) {
 function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getSeverityIcon, isSelected, onClick }) {
   return (
     <motion.div
-      className={`bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-slate-700 hover:shadow-2xl ${
-        isSelected ? 'ring-2 ring-cyan-500' : ''
-      }`}
+      className={`bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-slate-700 hover:shadow-2xl ${isSelected ? 'ring-2 ring-cyan-500' : ''
+        }`}
       variants={{
         hidden: { opacity: 0, y: 20 },
         visible: { opacity: 1, y: 0 }
@@ -488,8 +487,8 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <img 
-              src={alert.img} 
+            <img
+              src={alert.img}
               alt={`Traffic camera at ${alert.location}`}
               className="w-full h-48 object-cover"
               onError={(e) => e.target.style.display = 'none'}
@@ -566,11 +565,10 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
 function ObjectBadge({ icon, label, count, isBool = false, critical = false }) {
   return (
     <motion.div
-      className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${
-        critical
-          ? 'bg-red-500/10 text-red-400 border-red-500/30'
-          : 'bg-slate-800/50 text-slate-300 border-slate-700'
-      }`}
+      className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${critical
+        ? 'bg-red-500/10 text-red-400 border-red-500/30'
+        : 'bg-slate-800/50 text-slate-300 border-slate-700'
+        }`}
       variants={{
         hidden: { opacity: 0, scale: 0 },
         visible: { opacity: 1, scale: 1 }
@@ -581,9 +579,8 @@ function ObjectBadge({ icon, label, count, isBool = false, critical = false }) {
       {icon}
       <span>{label}</span>
       {!isBool && count !== undefined && (
-        <span className={`px-1.5 py-0.5 rounded-full font-['JetBrains_Mono'] ${
-          critical ? 'bg-red-500 text-white' : 'bg-slate-700 text-white'
-        }`}>
+        <span className={`px-1.5 py-0.5 rounded-full font-['JetBrains_Mono'] ${critical ? 'bg-red-500 text-white' : 'bg-slate-700 text-white'
+          }`}>
           {count}
         </span>
       )}

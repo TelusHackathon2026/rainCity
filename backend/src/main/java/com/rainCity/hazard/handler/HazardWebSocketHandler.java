@@ -1,69 +1,54 @@
 package com.rainCity.hazard.handler;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rainCity.hazard.model.HazardModels.HazardResponse;
 import com.rainCity.hazard.model.HazardModels.LocationRequest;
 import com.rainCity.hazard.service.ProcessingService;
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
-import org.springframework.web.socket.*;
-import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.stereotype.Controller;
 
-@Component
-public class HazardWebSocketHandler extends TextWebSocketHandler {
+@Controller
+public class HazardWebSocketHandler {
 
   private final ProcessingService processingService;
-  private final ObjectMapper objectMapper = new ObjectMapper();
+  private final SimpMessagingTemplate messagingTemplate;
 
-  // store each session for list
-  private final Map<WebSocketSession, List<String>> sessionSubscriptions =
-      new ConcurrentHashMap<>();
+  // Stores unique locations to monitor across all connected users
+  private final Set<String> monitoredLocations = ConcurrentHashMap.newKeySet();
 
-  public HazardWebSocketHandler(ProcessingService processingService) {
+  public HazardWebSocketHandler(
+      ProcessingService processingService, SimpMessagingTemplate messagingTemplate) {
     this.processingService = processingService;
+    this.messagingTemplate = messagingTemplate;
   }
 
-  // ok so read json val convert ot locReq class then send off to processing
-  @Override
-  public void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
-    LocationRequest request = objectMapper.readValue(message.getPayload(), LocationRequest.class);
-    sessionSubscriptions.put(session, request.getLocations());
-
-    processAndSend(session, request.getLocations());
+  @MessageMapping("/monitor-intersections")
+  public void handleMonitorRequest(@Payload LocationRequest request) {
+    if (request != null && request.getLocations() != null) {
+      // Adds the new list of locations to our active monitoring set
+      monitoredLocations.addAll(request.getLocations());
+      System.out.println("Backend is now tracking: " + monitoredLocations);
+    }
   }
 
-  @Override
-  public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-    sessionSubscriptions.remove(session);
-  }
-
-  // do it automatiically go throug sesion see if open then ssend processing
   @Scheduled(fixedRateString = "${hazard.refresh-rate-ms}")
   public void scheduledUpdate() {
-    sessionSubscriptions.forEach(
-        (session, locations) -> {
-          if (session.isOpen()) {
-            processAndSend(session, locations);
-          }
-        });
-  }
+    if (monitoredLocations.isEmpty())
+      return;
 
-  // for each loc process it get it back then send as json obj.
-
-  private void processAndSend(WebSocketSession session, List<String> locations) {
-    for (String loc : locations) {
+    for (String loc : monitoredLocations) {
       try {
         HazardResponse response = processingService.processLocation(loc);
         if (response != null) {
-          String json = objectMapper.writeValueAsString(response);
-          session.sendMessage(new TextMessage(json));
+          // This pushes to your React client.subscribe('/topic/traffic-alerts')
+          messagingTemplate.convertAndSend("/topic/traffic-alerts", response);
         }
-      } catch (IOException e) {
-        e.printStackTrace();
+      } catch (Exception e) {
+        System.err.println("Error updating location " + loc + ": " + e.getMessage());
       }
     }
   }
