@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: vancouver-hazard-detector
+  
+  datasource:
+    url: jdbc:postgresql://YOUR_SUPABASE_URL:5432/postgres
+    username: postgres
+    password: YOUR_SUPABASE_PASSWORD
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: update  # Creates tables automatically
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+  
+server:
+  port: 8080
+
+
+app:
+  ai-model:
+    yolo-url: https://api-inference.huggingface.co/models/YOUR_USERNAME/vancouver-hazards
+    hf-token: hf_YOUR_HUGGINGFACE_TOKEN
+  
+  claude-api:
+    url: https://api.anthropic.com/v1/messages
+    api-key: sk-ant-YOUR_ANTHROPIC_KEY
