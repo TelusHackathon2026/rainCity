@@ -17,10 +17,10 @@ app:
     # If using Gradio Client, the endpoint often looks like this. 
     # If it is a direct API, replace with the specific endpoint provided via the "Use via API" button on HF.
     hf-api-url: https://sdl11-intersection-hazard-api.hf.space/api/predict
-    hf-token: hf_YOUR_HUGGINGFACE_TOKEN 
+    hf-token: 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
   
   deepseek-api:
-    url: https://deepseekv32-3ca9s.paas.ai.telus.com
+    url: https://deepseekv32-3ca9s.paas.ai.telus.com 
     access-token: a12a7d3705b12aeb46eb4cc8d77f5446
 
 # Scheduling settings (e.g., check cameras every 10 seconds)
