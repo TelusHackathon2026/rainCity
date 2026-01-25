@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { AlertTriangle, TrendingUp, Clock, MapPin, Car, UserX, Construction, Flame } from 'lucide-react';
+import Header from './Header';
 
 // Hardcoded alert data
 const MOCK_ALERTS = [
@@ -128,9 +129,9 @@ export default function TrafficDashboard() {
   };
 
   const getSeverityIcon = (severity) => {
-    if (severity === 'CRITICAL') return '';
-    if (severity === 'HIGH') return '';
-    return '';
+    if (severity === 'CRITICAL') return '🔴';
+    if (severity === 'HIGH') return '🟠';
+    return '🟡';
   };
 
   return (
@@ -164,43 +165,12 @@ export default function TrafficDashboard() {
       </motion.div>
 
       {/* Header */}
-      <motion.div
-        className="relative z-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl"
-        initial={{ y: -100, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-      >
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight mb-2 text-cyan-400">
-                Traffic Monitor
-              </h1>
-              <p className="text-slate-400 text-sm font-['JetBrains_Mono']">
-                Real-time anomaly detection • Vancouver, BC
-              </p>
-            </div>
-            
-            <div className="flex items-center space-x-6">
-              <div className="text-right">
-                <div className="text-sm text-slate-400">Last Updated</div>
-                <div className="text-lg font-semibold font-['JetBrains_Mono']">3:00 PM</div>
-              </div>
-              <div className="text-right">
-                <div className="text-sm text-slate-400">Active Alerts</div>
-                <div className="text-lg font-semibold font-['JetBrains_Mono'] text-red-400">
-                  {MOCK_ALERTS.length}
-                </div>
-              </div>
-              <motion.div
-                className="w-3 h-3 bg-green-400 rounded-full"
-                animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
-                transition={{ duration: 2, repeat: Infinity }}
-              />
-            </div>
-          </div>
-        </div>
-      </motion.div>
+      <Header 
+        lastUpdated="3:00 PM"
+        activeAlerts={MOCK_ALERTS.length}
+        showMapButton={true}
+        showStats={true}
+      />
 
       {/* Main Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
