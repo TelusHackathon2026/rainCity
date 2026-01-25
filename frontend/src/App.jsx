@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { AlertTriangle, TrendingUp, Clock, MapPin, Car, UserX, Construction, Flame } from 'lucide-react';
 
 // Hardcoded alert data
@@ -103,13 +104,13 @@ export default function TrafficDashboard() {
   const getSeverityColor = (severity) => {
     switch (severity) {
       case 'CRITICAL':
-        return 'from-red-500 to-red-600';
+        return 'bg-red-600';
       case 'HIGH':
-        return 'from-orange-500 to-orange-600';
+        return 'bg-orange-600';
       case 'MEDIUM':
-        return 'from-yellow-500 to-yellow-600';
+        return 'bg-yellow-600';
       default:
-        return 'from-slate-500 to-slate-600';
+        return 'bg-slate-600';
     }
   };
 
@@ -127,54 +128,53 @@ export default function TrafficDashboard() {
   };
 
   const getSeverityIcon = (severity) => {
-    if (severity === 'CRITICAL') return '🔴';
-    if (severity === 'HIGH') return '🟠';
-    return '🟡';
+    if (severity === 'CRITICAL') return '';
+    if (severity === 'HIGH') return '';
+    return '';
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 font-['Outfit'] text-white">
+    <div className="min-h-screen bg-slate-950 font-['Outfit'] text-white">
       {/* Animated Background Grid */}
-      <div className="fixed inset-0 opacity-10">
-        <div className="absolute inset-0" style={{
-          backgroundImage: `
-            linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px)
-          `,
-          backgroundSize: '60px 60px',
-          animation: 'gridMove 20s linear infinite'
-        }}></div>
-      </div>
-
-      <style>{`
-        @keyframes gridMove {
-          0% { transform: translate(0, 0); }
-          100% { transform: translate(60px, 60px); }
-        }
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slide-up {
-          animation: slideUp 0.5s ease-out forwards;
-        }
-      `}</style>
+      <motion.div
+        className="fixed inset-0 opacity-10"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.1 }}
+        transition={{ duration: 1 }}
+      >
+        <motion.div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `
+              linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px)
+            `,
+            backgroundSize: '60px 60px'
+          }}
+          animate={{
+            x: [0, 60],
+            y: [0, 60]
+          }}
+          transition={{
+            duration: 20,
+            repeat: Infinity,
+            ease: "linear"
+          }}
+        />
+      </motion.div>
 
       {/* Header */}
-      <div className="relative z-10 border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl">
+      <motion.div
+        className="relative z-10 border-b border-slate-800 bg-slate-900/80 backdrop-blur-xl"
+        initial={{ y: -100, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-4xl font-bold tracking-tight mb-2">
-                <span className="bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
-                  Traffic Monitor
-                </span>
+              <h1 className="text-4xl font-bold tracking-tight mb-2 text-cyan-400">
+                Traffic Monitor
               </h1>
               <p className="text-slate-400 text-sm font-['JetBrains_Mono']">
                 Real-time anomaly detection • Vancouver, BC
@@ -192,11 +192,15 @@ export default function TrafficDashboard() {
                   {MOCK_ALERTS.length}
                 </div>
               </div>
-              <div className="w-3 h-3 bg-green-400 rounded-full animate-pulse"></div>
+              <motion.div
+                className="w-3 h-3 bg-green-400 rounded-full"
+                animate={{ scale: [1, 1.2, 1], opacity: [1, 0.7, 1] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
             </div>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Main Content */}
       <div className="relative z-10 max-w-7xl mx-auto px-6 py-8">
@@ -206,24 +210,29 @@ export default function TrafficDashboard() {
             label="Critical Alerts"
             value={MOCK_ALERTS.filter(a => a.severity === 'CRITICAL').length}
             color="red"
-            delay="0ms"
+            delay={0}
           />
           <StatCard
             label="High Priority"
             value={MOCK_ALERTS.filter(a => a.severity === 'HIGH').length}
             color="orange"
-            delay="100ms"
+            delay={0.1}
           />
           <StatCard
             label="Medium Priority"
             value={MOCK_ALERTS.filter(a => a.severity === 'MEDIUM').length}
             color="yellow"
-            delay="200ms"
+            delay={0.2}
           />
         </div>
 
         {/* Alert List Header */}
-        <div className="flex items-center justify-between mb-6">
+        <motion.div
+          className="flex items-center justify-between mb-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+        >
           <h2 className="text-2xl font-bold flex items-center space-x-3">
             <AlertTriangle className="w-6 h-6 text-red-400" />
             <span>Active Alerts</span>
@@ -231,10 +240,22 @@ export default function TrafficDashboard() {
           <div className="text-sm text-slate-400 font-['JetBrains_Mono']">
             Sorted by Score Delta (Highest First)
           </div>
-        </div>
+        </motion.div>
 
         {/* Alert Cards */}
-        <div className="space-y-4">
+        <motion.div
+          className="space-y-4"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.1,
+                delayChildren: 0.4
+              }
+            }
+          }}
+        >
           {MOCK_ALERTS.map((alert, index) => (
             <AlertCard
               key={alert.id}
@@ -247,7 +268,7 @@ export default function TrafficDashboard() {
               onClick={() => setSelectedAlert(alert)}
             />
           ))}
-        </div>
+        </motion.div>
       </div>
     </div>
   );
@@ -256,9 +277,9 @@ export default function TrafficDashboard() {
 // Stat Card Component
 function StatCard({ label, value, color, delay }) {
   const colorClasses = {
-    red: 'from-red-500/10 to-red-600/10 border-red-500/30',
-    orange: 'from-orange-500/10 to-orange-600/10 border-orange-500/30',
-    yellow: 'from-yellow-500/10 to-yellow-600/10 border-yellow-500/30'
+    red: 'bg-red-500/10 border-red-500/30',
+    orange: 'bg-orange-500/10 border-orange-500/30',
+    yellow: 'bg-yellow-500/10 border-yellow-500/30'
   };
 
   const textColors = {
@@ -268,36 +289,59 @@ function StatCard({ label, value, color, delay }) {
   };
 
   return (
-    <div
-      className={`bg-gradient-to-br ${colorClasses[color]} border backdrop-blur-sm rounded-xl p-6 animate-slide-up`}
-      style={{ animationDelay: delay }}
+    <motion.div
+      className={`${colorClasses[color]} border backdrop-blur-sm rounded-xl p-6`}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay }}
+      whileHover={{ scale: 1.02, transition: { duration: 0.2 } }}
     >
       <div className="text-slate-400 text-sm mb-2">{label}</div>
       <div className={`text-4xl font-bold font-['JetBrains_Mono'] ${textColors[color]}`}>
         {value}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 // Alert Card Component
 function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getSeverityIcon, isSelected, onClick }) {
   return (
-    <div
-      className={`bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-slate-700 hover:shadow-2xl animate-slide-up ${
+    <motion.div
+      className={`bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-xl overflow-hidden transition-all duration-300 cursor-pointer hover:border-slate-700 hover:shadow-2xl ${
         isSelected ? 'ring-2 ring-cyan-500' : ''
       }`}
-      style={{ animationDelay: `${index * 100}ms` }}
+      variants={{
+        hidden: { opacity: 0, y: 20 },
+        visible: { opacity: 1, y: 0 }
+      }}
+      transition={{ duration: 0.5 }}
+      whileHover={{ scale: 1.01, transition: { duration: 0.2 } }}
+      whileTap={{ scale: 0.99 }}
       onClick={onClick}
+      layout
     >
       {/* Severity Indicator Bar */}
-      <div className={`h-1.5 bg-gradient-to-r ${getSeverityColor(alert.severity)}`}></div>
+      <motion.div
+        className={`h-1.5 ${getSeverityColor(alert.severity)}`}
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: 1 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        style={{ transformOrigin: "left" }}
+      />
 
       <div className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center space-x-3 mb-2">
-              <span className="text-2xl">{getSeverityIcon(alert.severity)}</span>
+              <motion.span
+                className="text-2xl"
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ duration: 0.5, type: "spring" }}
+              >
+                {getSeverityIcon(alert.severity)}
+              </motion.span>
               <h3 className="text-xl font-bold">{alert.location}</h3>
               <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${getSeverityBadgeColor(alert.severity)}`}>
                 {alert.severity}
@@ -313,9 +357,14 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
           <div className="text-right ml-6">
             <div className="flex items-center space-x-2 mb-1">
               <TrendingUp className="w-5 h-5 text-red-400" />
-              <span className="text-3xl font-bold font-['JetBrains_Mono'] text-red-400">
+              <motion.span
+                className="text-3xl font-bold font-['JetBrains_Mono'] text-red-400"
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.5, type: "spring", stiffness: 200 }}
+              >
                 +{alert.delta}
-              </span>
+              </motion.span>
             </div>
             <div className="text-xs text-slate-500">Score Delta</div>
           </div>
@@ -323,19 +372,28 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
 
         {/* Score Breakdown */}
         <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="bg-slate-800/50 rounded-lg p-3">
+          <motion.div
+            className="bg-slate-800/50 rounded-lg p-3"
+            whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.7)" }}
+          >
             <div className="text-xs text-slate-500 mb-1">Current Score</div>
             <div className="text-xl font-bold font-['JetBrains_Mono'] text-white">
               {alert.currentScore}
             </div>
-          </div>
-          <div className="bg-slate-800/50 rounded-lg p-3">
+          </motion.div>
+          <motion.div
+            className="bg-slate-800/50 rounded-lg p-3"
+            whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.7)" }}
+          >
             <div className="text-xs text-slate-500 mb-1">Baseline (30min avg)</div>
             <div className="text-xl font-bold font-['JetBrains_Mono'] text-slate-400">
               {alert.baseline}
             </div>
-          </div>
-          <div className="bg-slate-800/50 rounded-lg p-3">
+          </motion.div>
+          <motion.div
+            className="bg-slate-800/50 rounded-lg p-3"
+            whileHover={{ backgroundColor: "rgba(30, 41, 59, 0.7)" }}
+          >
             <div className="text-xs text-slate-500 mb-1 flex items-center space-x-1">
               <Clock className="w-3 h-3" />
               <span>Time</span>
@@ -343,11 +401,22 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
             <div className="text-xl font-bold font-['JetBrains_Mono'] text-cyan-400">
               {alert.timestamp}
             </div>
-          </div>
+          </motion.div>
         </div>
 
         {/* Detected Objects */}
-        <div className="flex flex-wrap gap-2">
+        <motion.div
+          className="flex flex-wrap gap-2"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            visible: {
+              transition: {
+                staggerChildren: 0.05
+              }
+            }
+          }}
+        >
           {alert.detectedObjects.person_laying && (
             <ObjectBadge
               icon={<UserX className="w-3 h-3" />}
@@ -392,21 +461,27 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
               count={alert.detectedObjects.construction_equipment}
             />
           )}
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 // Object Badge Component
 function ObjectBadge({ icon, label, count, critical = false }) {
   return (
-    <div
+    <motion.div
       className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${
         critical
           ? 'bg-red-500/10 text-red-400 border-red-500/30'
           : 'bg-slate-800/50 text-slate-300 border-slate-700'
       }`}
+      variants={{
+        hidden: { opacity: 0, scale: 0 },
+        visible: { opacity: 1, scale: 1 }
+      }}
+      whileHover={{ scale: 1.05 }}
+      transition={{ duration: 0.2 }}
     >
       {icon}
       <span>{label}</span>
@@ -415,6 +490,6 @@ function ObjectBadge({ icon, label, count, critical = false }) {
       }`}>
         {count}
       </span>
-    </div>
+    </motion.div>
   );
 }
