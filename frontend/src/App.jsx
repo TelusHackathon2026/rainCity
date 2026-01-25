@@ -1,106 +1,187 @@
-import React, { useState } from 'react';
+import { Client } from "@stomp/stompjs";
+import SockJS from "sockjs-client";
+import { useEffect, useRef, useState } from "react";
 import { motion } from 'framer-motion';
-import { AlertTriangle, TrendingUp, Clock, MapPin, Car, UserX, Construction, Flame } from 'lucide-react';
+import { AlertTriangle, TrendingUp, Clock, MapPin, UserX, Construction, Flame, TreeDeciduous, Users } from 'lucide-react';
 import Header from './Header';
 
-// Hardcoded alert data
-const MOCK_ALERTS = [
-  {
-    id: 1,
-    location: 'Main St & Broadway',
-    currentScore: 144,
-    baseline: 52,
-    delta: 92,
-    severity: 'CRITICAL',
-    detectedObjects: {
-      person_laying: 1,
-      traffic_cones: 12,
-      stopped_vehicles: 2,
-      moving_vehicles: 48
-    },
-    timestamp: '3:00 PM',
-    description: '1 person laying, 12 cones, 2 stopped vehicles'
-  },
-  {
-    id: 2,
-    location: 'Granville St & 41st Ave',
-    currentScore: 87,
-    baseline: 56,
-    delta: 31,
-    severity: 'HIGH',
-    detectedObjects: {
-      traffic_cones: 8,
-      stopped_vehicles: 1,
-      moving_vehicles: 62
-    },
-    timestamp: '3:00 PM',
-    description: 'Heavy traffic, 8 cones detected'
-  },
-  {
-    id: 3,
-    location: 'Cambie St & 12th Ave',
-    currentScore: 45,
-    baseline: 31,
-    delta: 14,
-    severity: 'MEDIUM',
-    detectedObjects: {
-      traffic_cones: 5,
-      stopped_vehicles: 1,
-      moving_vehicles: 28
-    },
-    timestamp: '3:00 PM',
-    description: '5 traffic cones, 1 stopped vehicle'
-  },
-  {
-    id: 4,
-    location: 'Hastings St & Commercial Dr',
-    currentScore: 78,
-    baseline: 64,
-    delta: 14,
-    severity: 'MEDIUM',
-    detectedObjects: {
-      emergency_vehicle: 1,
-      traffic_cones: 4,
-      moving_vehicles: 52
-    },
-    timestamp: '2:45 PM',
-    description: '1 emergency vehicle, 4 cones'
-  },
-  {
-    id: 5,
-    location: 'Burrard St & Davie St',
-    currentScore: 156,
-    baseline: 105,
-    delta: 51,
-    severity: 'CRITICAL',
-    detectedObjects: {
-      crash_debris: 1,
-      stopped_vehicles: 3,
-      traffic_cones: 15,
-      moving_vehicles: 71
-    },
-    timestamp: '2:45 PM',
-    description: 'Crash debris, 3 stopped vehicles, 15 cones'
-  },
-  {
-    id: 6,
-    location: 'Knight St & 49th Ave',
-    currentScore: 92,
-    baseline: 68,
-    delta: 24,
-    severity: 'HIGH',
-    detectedObjects: {
-      construction_equipment: 2,
-      traffic_cones: 10,
-      moving_vehicles: 54
-    },
-    timestamp: '2:30 PM',
-    description: '2 construction equipment, 10 cones'
-  }
+// List of intersections to monitor
+const MONITORED_INTERSECTIONS = [
+  'Hornby St and Nelson St',
+  'Granville St and W 12th Ave',
+  'Fir St and W 5th Ave',
+  'Main St and E Hastings St',
+  'Burrard St and Drake St',
+  'Hornby St and Smithe St',
+  'Davie St and Burrard St',
+  'Robson St and Granville St',
+  'Broadway and Main St',
+  'Commercial Dr and Broadway'
 ];
 
 export default function TrafficDashboard() {
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [alerts, setAlerts] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const stompClient = useRef(null);
+
+  // Calculate severity from spike and delta
+  const calculateSeverity = (alert) => {
+    if (!alert.spike) return 'NORMAL';
+    
+    if (alert.delta > 50) return 'CRITICAL';
+    if (alert.delta > 25) return 'HIGH';
+    if (alert.delta > 10) return 'MEDIUM';
+    
+    return 'NORMAL';
+  };
+
+  // Transform backend data to frontend format
+  const transformAlert = (backendAlert) => ({
+    id: backendAlert.id,
+    location: backendAlert.location,
+    currentScore: backendAlert.score,              // score → currentScore
+    baseline: backendAlert.average,                 // average → baseline
+    delta: backendAlert.delta,
+    severity: calculateSeverity(backendAlert),      // calculate from spike
+    detectedObjects: backendAlert.detectedObjects,
+    timestamp: backendAlert.timestamp,
+    img: backendAlert.img,
+    description: backendAlert.description
+  });
+
+  useEffect(() => {
+    // Create STOMP client
+    const client = new Client({
+      webSocketFactory: () => new SockJS('http://localhost:8080/ws'), // ← CHANGE THIS to your backend URL
+      
+      connectHeaders: {
+        // Add any auth headers here if needed
+      },
+      
+      debug: (str) => {
+        console.log('STOMP:', str);
+      },
+      
+      reconnectDelay: 5000,
+      heartbeatIncoming: 4000,
+      heartbeatOutgoing: 4000,
+
+      onConnect: (frame) => {
+        console.log('✅ Connected to WebSocket');
+        setConnected(true);
+        setError(null);
+
+        // Subscribe to traffic alerts topic
+        client.subscribe('/topic/traffic-alerts', (message) => {
+          console.log('📨 Received alert:', message.body);
+          
+          try {
+            const data = JSON.parse(message.body);
+            
+            // Handle single alert or array of alerts
+            if (Array.isArray(data)) {
+              // Multiple alerts received (initial load or bulk update)
+              const transformedAlerts = data.map(transformAlert);
+              setAlerts(transformedAlerts);
+              console.log(`✅ ${transformedAlerts.length} alerts loaded`);
+            } else {
+              // Single alert received (real-time update)
+              const transformedAlert = transformAlert(data);
+              setAlerts(prevAlerts => {
+                // Check if alert exists (update) or is new (add)
+                const existingIndex = prevAlerts.findIndex(a => a.id === transformedAlert.id);
+                if (existingIndex >= 0) {
+                  // Update existing alert
+                  const newAlerts = [...prevAlerts];
+                  newAlerts[existingIndex] = transformedAlert;
+                  return newAlerts;
+                } else {
+                  // Add new alert
+                  return [...prevAlerts, transformedAlert];
+                }
+              });
+              console.log(`✅ Alert for ${data.location}`);
+            }
+            
+            setLastUpdated(new Date().toLocaleTimeString());
+          } catch (err) {
+            console.error('❌ Error parsing message:', err);
+          }
+        });
+
+        // Send list of intersections to monitor
+        console.log('📤 Requesting monitoring for intersections:', MONITORED_INTERSECTIONS);
+        client.publish({
+          destination: '/app/monitor-intersections',
+          body: JSON.stringify({
+            intersections: MONITORED_INTERSECTIONS
+          })
+        });
+      },
+
+      onStompError: (frame) => {
+        console.error('❌ STOMP error:', frame.headers['message']);
+        setError('WebSocket connection error');
+        setConnected(false);
+      },
+
+      onWebSocketClose: () => {
+        console.log('🔌 WebSocket closed');
+        setConnected(false);
+      },
+
+      onWebSocketError: (event) => {
+        console.error('❌ WebSocket error:', event);
+        setError('Failed to connect to server');
+      }
+    });
+
+    client.activate();
+    stompClient.current = client;
+
+    // Cleanup on unmount
+    return () => {
+      console.log('🛑 Disconnecting WebSocket');
+      if (client.active) {
+        client.deactivate();
+      }
+    };
+  }, []);
+
+  // Show loading while connecting
+  if (!connected && !error && alerts.length === 0) {
+    return (
+      <div className="min-h-screen bg-slate-950 font-['Outfit'] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-cyan-400 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-400 text-lg">Connecting to server...</p>
+          <p className="text-slate-500 text-sm mt-2">Establishing WebSocket connection</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && !connected) {
+    return (
+      <div className="min-h-screen bg-slate-950 font-['Outfit'] text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-400 text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-white mb-2">Connection Failed</h2>
+          <p className="text-slate-400 mb-4">{error}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -129,10 +210,16 @@ export default function TrafficDashboard() {
   };
 
   const getSeverityIcon = (severity) => {
-    if (severity === 'CRITICAL') return '';
-    if (severity === 'HIGH') return '';
-    return '';
+    if (severity === 'CRITICAL') return '🔴';
+    if (severity === 'HIGH') return '🟠';
+    if (severity === 'MEDIUM') return '🟡';
+    return '⚪';
   };
+
+  // Filter and sort alerts
+  const activeAlerts = alerts
+    .filter(a => a.severity !== 'NORMAL')
+    .sort((a, b) => b.delta - a.delta);
 
   return (
     <div className="min-h-screen bg-slate-950 font-['Outfit'] text-white">
@@ -164,10 +251,20 @@ export default function TrafficDashboard() {
         />
       </motion.div>
 
+      {/* Connection Status */}
+      {connected && (
+        <div className="fixed top-4 right-4 z-50">
+          <div className="flex items-center space-x-2 bg-green-500/10 border border-green-500/30 rounded-full px-4 py-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+            <span className="text-green-400 text-sm font-semibold">Live</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <Header 
-        lastUpdated="3:00 PM"
-        activeAlerts={MOCK_ALERTS.length}
+        lastUpdated={lastUpdated || "Waiting for data..."}
+        activeAlerts={activeAlerts.length}
         showMapButton={true}
         showStats={true}
       />
@@ -178,19 +275,19 @@ export default function TrafficDashboard() {
         <div className="grid grid-cols-3 gap-4 mb-8">
           <StatCard
             label="Critical Alerts"
-            value={MOCK_ALERTS.filter(a => a.severity === 'CRITICAL').length}
+            value={activeAlerts.filter(a => a.severity === 'CRITICAL').length}
             color="red"
             delay={0}
           />
           <StatCard
             label="High Priority"
-            value={MOCK_ALERTS.filter(a => a.severity === 'HIGH').length}
+            value={activeAlerts.filter(a => a.severity === 'HIGH').length}
             color="orange"
             delay={0.1}
           />
           <StatCard
             label="Medium Priority"
-            value={MOCK_ALERTS.filter(a => a.severity === 'MEDIUM').length}
+            value={activeAlerts.filter(a => a.severity === 'MEDIUM').length}
             color="yellow"
             delay={0.2}
           />
@@ -226,18 +323,27 @@ export default function TrafficDashboard() {
             }
           }}
         >
-          {MOCK_ALERTS.map((alert, index) => (
-            <AlertCard
-              key={alert.id}
-              alert={alert}
-              index={index}
-              getSeverityColor={getSeverityColor}
-              getSeverityBadgeColor={getSeverityBadgeColor}
-              getSeverityIcon={getSeverityIcon}
-              isSelected={selectedAlert?.id === alert.id}
-              onClick={() => setSelectedAlert(alert)}
-            />
-          ))}
+          {activeAlerts.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-slate-400 text-lg">No active alerts at this time</p>
+              <p className="text-slate-500 text-sm mt-2">
+                {connected ? 'All traffic conditions are normal' : 'Waiting for connection...'}
+              </p>
+            </div>
+          ) : (
+            activeAlerts.map((alert, index) => (
+              <AlertCard
+                key={alert.id}
+                alert={alert}
+                index={index}
+                getSeverityColor={getSeverityColor}
+                getSeverityBadgeColor={getSeverityBadgeColor}
+                getSeverityIcon={getSeverityIcon}
+                isSelected={selectedAlert?.id === alert.id}
+                onClick={() => setSelectedAlert(alert)}
+              />
+            ))
+          )}
         </motion.div>
       </div>
     </div>
@@ -374,6 +480,23 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
           </motion.div>
         </div>
 
+        {/* Camera Image */}
+        {alert.img && (
+          <motion.div
+            className="mb-4 rounded-lg overflow-hidden border border-slate-700"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <img 
+              src={alert.img} 
+              alt={`Traffic camera at ${alert.location}`}
+              className="w-full h-48 object-cover"
+              onError={(e) => e.target.style.display = 'none'}
+            />
+          </motion.div>
+        )}
+
         {/* Detected Objects */}
         <motion.div
           className="flex flex-wrap gap-2"
@@ -387,7 +510,7 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
             }
           }}
         >
-          {alert.detectedObjects.person_laying && (
+          {alert.detectedObjects.person_laying > 0 && (
             <ObjectBadge
               icon={<UserX className="w-3 h-3" />}
               label="Person Laying"
@@ -395,40 +518,42 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
               critical
             />
           )}
-          {alert.detectedObjects.crash_debris && (
+          {alert.detectedObjects.accident && (
             <ObjectBadge
               icon={<Flame className="w-3 h-3" />}
-              label="Crash Debris"
-              count={alert.detectedObjects.crash_debris}
+              label="Accident"
+              isBool
               critical
             />
           )}
-          {alert.detectedObjects.emergency_vehicle && (
+          {alert.detectedObjects.debris > 0 && (
             <ObjectBadge
-              icon={<Car className="w-3 h-3" />}
-              label="Emergency Vehicle"
-              count={alert.detectedObjects.emergency_vehicle}
+              icon={<Flame className="w-3 h-3" />}
+              label="Debris"
+              count={alert.detectedObjects.debris}
+              critical
             />
           )}
-          {alert.detectedObjects.stopped_vehicles && (
-            <ObjectBadge
-              icon={<Car className="w-3 h-3" />}
-              label="Stopped Vehicles"
-              count={alert.detectedObjects.stopped_vehicles}
-            />
-          )}
-          {alert.detectedObjects.traffic_cones && (
+          {alert.detectedObjects.cones > 0 && (
             <ObjectBadge
               icon={<Construction className="w-3 h-3" />}
               label="Traffic Cones"
-              count={alert.detectedObjects.traffic_cones}
+              count={alert.detectedObjects.cones}
             />
           )}
-          {alert.detectedObjects.construction_equipment && (
+          {alert.detectedObjects.people > 0 && (
             <ObjectBadge
-              icon={<Construction className="w-3 h-3" />}
-              label="Construction Equipment"
-              count={alert.detectedObjects.construction_equipment}
+              icon={<Users className="w-3 h-3" />}
+              label="People"
+              count={alert.detectedObjects.people}
+            />
+          )}
+          {alert.detectedObjects.tree && (
+            <ObjectBadge
+              icon={<TreeDeciduous className="w-3 h-3" />}
+              label="Fallen Tree"
+              isBool
+              critical
             />
           )}
         </motion.div>
@@ -438,7 +563,7 @@ function AlertCard({ alert, index, getSeverityColor, getSeverityBadgeColor, getS
 }
 
 // Object Badge Component
-function ObjectBadge({ icon, label, count, critical = false }) {
+function ObjectBadge({ icon, label, count, isBool = false, critical = false }) {
   return (
     <motion.div
       className={`flex items-center space-x-2 px-3 py-1.5 rounded-full text-xs font-semibold border ${
@@ -455,11 +580,13 @@ function ObjectBadge({ icon, label, count, critical = false }) {
     >
       {icon}
       <span>{label}</span>
-      <span className={`px-1.5 py-0.5 rounded-full font-['JetBrains_Mono'] ${
-        critical ? 'bg-red-500 text-white' : 'bg-slate-700 text-white'
-      }`}>
-        {count}
-      </span>
+      {!isBool && count !== undefined && (
+        <span className={`px-1.5 py-0.5 rounded-full font-['JetBrains_Mono'] ${
+          critical ? 'bg-red-500 text-white' : 'bg-slate-700 text-white'
+        }`}>
+          {count}
+        </span>
+      )}
     </motion.div>
   );
 }
