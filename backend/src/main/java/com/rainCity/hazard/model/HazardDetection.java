@@ -2,16 +2,9 @@ package com.rainCity.hazard.model;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-import org.hibernate.annotations.CreatedDate;
 
 @Entity
 @Table(name = "hazard_detections")
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class HazardDetection {
 
   @Id
@@ -31,7 +24,7 @@ public class HazardDetection {
   private Integer delta;
 
   @Column(nullable = false)
-  private String severity; // CRITICAL, HIGH, MEDIUM, LOW
+  private String severity;
 
   @Embedded private DetectedObjects detectedObjects;
 
@@ -41,14 +34,105 @@ public class HazardDetection {
   @Column(length = 2000)
   private String severeDescription;
 
-  @CreatedDate
   @Column(nullable = false, updatable = false)
   private LocalDateTime timestamp;
 
-  @Column private String imageUrl; // Optional: URL to traffic cam image
+  @Column private String imageUrl;
 
   @PrePersist
   protected void onCreate() {
     timestamp = LocalDateTime.now();
+  }
+
+  // Constructors
+  public HazardDetection() {}
+
+  // Getters and Setters
+  public Long getId() {
+    return id;
+  }
+
+  public void setId(Long id) {
+    this.id = id;
+  }
+
+  public String getLocation() {
+    return location;
+  }
+
+  public void setLocation(String location) {
+    this.location = location;
+  }
+
+  public Integer getCurrentScore() {
+    return currentScore;
+  }
+
+  public void setCurrentScore(Integer currentScore) {
+    this.currentScore = currentScore;
+  }
+
+  public Integer getBaseline() {
+    return baseline;
+  }
+
+  public void setBaseline(Integer baseline) {
+    this.baseline = baseline;
+  }
+
+  public Integer getDelta() {
+    return delta;
+  }
+
+  public void setDelta(Integer delta) {
+    this.delta = delta;
+  }
+
+  public String getSeverity() {
+    return severity;
+  }
+
+  public void setSeverity(String severity) {
+    this.severity = severity;
+  }
+
+  public DetectedObjects getDetectedObjects() {
+    return detectedObjects;
+  }
+
+  public void setDetectedObjects(DetectedObjects detectedObjects) {
+    this.detectedObjects = detectedObjects;
+  }
+
+  public String getDescription() {
+    return description;
+  }
+
+  public void setDescription(String description) {
+    this.description = description;
+  }
+
+  public String getSevereDescription() {
+    return severeDescription;
+  }
+
+  public void setSevereDescription(String severeDescription) {
+    this.severeDescription = severeDescription;
+  }
+
+  public LocalDateTime getTimestamp() {
+    return timestamp;
+  }
+
+  public void setTimestamp(LocalDateTime timestamp) {
+    this.timestamp = timestamp;
+  }
+
+  public String getImageUrl() {
+    return imageUrl;
+  }
+
+  public void setImageUrl(String imageUrl) {
+    this.imageUrl = imageUrl;
   }
 }
