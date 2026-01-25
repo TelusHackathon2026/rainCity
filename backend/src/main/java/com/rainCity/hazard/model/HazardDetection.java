@@ -37,7 +37,9 @@ public class HazardDetection {
   @Column(nullable = false, updatable = false)
   private LocalDateTime timestamp;
 
-  @Column private String imageUrl;
+  @Lob
+  @Column(name = "image", columnDefinition = "bytea") // PostgreSQL specific
+  private byte[] image;
 
   @PrePersist
   protected void onCreate() {
@@ -128,11 +130,11 @@ public class HazardDetection {
     this.timestamp = timestamp;
   }
 
-  public String getImageUrl() {
-    return imageUrl;
+  public byte[] getImage() {
+    return image;
   }
 
-  public void setImageUrl(String imageUrl) {
-    this.imageUrl = imageUrl;
+  public void setImage(byte[] image) {
+    this.image = image;
   }
 }
