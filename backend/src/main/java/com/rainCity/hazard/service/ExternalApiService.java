@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rainCity.hazard.model.HazardModels.*;
 import jakarta.annotation.PostConstruct;
 import java.util.*;
+import java.util.Random;
 import java.util.regex.*;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.io.support.ResourcePatternResolver;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -39,7 +43,7 @@ public class ExternalApiService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final Map<String, CameraInfo> cameraCache = new HashMap<>();
-    private final String CUSTOM_IMAGES_FOLDER = "custom-images"; // Folder for custom uploads
+    private final String CUSTOM_IMAGES_FOLDER = "custom-images";
 
     public record HazardTag(String label, double confidence) {
     }
@@ -61,8 +65,7 @@ public class ExternalApiService {
                         node.get("mapid").asText(),
                         node.get("geo_point_2d").get("lat").asDouble(),
                         node.get("geo_point_2d").get("lon").asDouble());
-                
-                // Store by both name and mapid for flexible lookup
+
                 cameraCache.put(info.name().toLowerCase(), info);
                 cameraCache.put(info.mapId().toLowerCase(), info);
             }
@@ -75,17 +78,16 @@ public class ExternalApiService {
 
     public List<byte[]> fetchCameraImages(String locationId) {
         CameraInfo camera = cameraCache.get(locationId.toLowerCase());
-        
-        // If camera not found in data.json, check custom-images folder
+
         if (camera == null) {
             System.out.println("⚠️ Camera not found in data.json: " + locationId);
-            System.out.println("🔍 Checking custom-images folder...");
+            System.out.println("🔍 Fetching random custom image...");
             return fetchCustomImages(locationId);
         }
 
         try {
             System.out.println("🎥 Fetching camera: " + camera.name() + " from " + camera.url());
-            
+
             String html = webClient
                     .get()
                     .uri(camera.url())
@@ -128,85 +130,92 @@ public class ExternalApiService {
         }
     }
 
-    /**
-     * Fetch custom uploaded images from the custom-images folder
-     * Looks for files matching the location ID (with common image extensions)
-     */
     private List<byte[]> fetchCustomImages(String locationId) {
         try {
-            // Sanitize location ID to create a valid filename
-            String sanitizedId = locationId.toLowerCase()
-                    .replaceAll("[^a-z0-9\\s-]", "")
-                    .replaceAll("\\s+", "-");
-            
-            System.out.println("🔍 Looking for custom image: " + sanitizedId);
-            
-            // Try different image extensions
-            String[] extensions = {".jpg", ".jpeg", ".png", ".webp"};
-            
-            for (String ext : extensions) {
-                String filename = CUSTOM_IMAGES_FOLDER + "/" + sanitizedId + ext;
-                
-                try {
-                    ClassPathResource resource = new ClassPathResource(filename);
-                    if (resource.exists()) {
-                        byte[] imageBytes = resource.getInputStream().readAllBytes();
-                        System.out.println("✅ Found custom image: " + filename + " (" + imageBytes.length + " bytes)");
-                        return List.of(imageBytes);
+            System.out.println(
+                    "🔍 Location '" + locationId + "' not in data.json - fetching random custom image");
+
+            ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            Resource[] resources = resolver.getResources("classpath:custom-images/*");
+
+            System.out.println("📂 Found " + resources.length + " total files in custom-images folder");
+
+            if (resources.length == 0) {
+                System.err.println("❌ No files found in custom-images folder");
+                System.err.println("💡 Place images in: src/main/resources/custom-images/");
+                System.err.println("💡 Supported formats: .jpg, .jpeg, .png, .webp");
+                return Collections.emptyList();
+            }
+
+            List<Resource> imageResources = new ArrayList<>();
+            for (Resource resource : resources) {
+                String filename = resource.getFilename();
+                System.out.println("   🔍 Checking file: " + filename);
+
+                if (filename != null) {
+                    String lowerFilename = filename.toLowerCase();
+                    if (lowerFilename.endsWith(".jpg")
+                            || lowerFilename.endsWith(".jpeg")
+                            || lowerFilename.endsWith(".png")
+                            || lowerFilename.endsWith(".webp")) {
+                        imageResources.add(resource);
+                        System.out.println("   ✅ Added image: " + filename);
                     }
-                } catch (Exception e) {
-                    // File doesn't exist, try next extension
-                    continue;
                 }
             }
-            
-            // Also try exact match with original locationId
-            for (String ext : extensions) {
-                String filename = CUSTOM_IMAGES_FOLDER + "/" + locationId + ext;
-                
-                try {
-                    ClassPathResource resource = new ClassPathResource(filename);
-                    if (resource.exists()) {
-                        byte[] imageBytes = resource.getInputStream().readAllBytes();
-                        System.out.println("✅ Found custom image: " + filename + " (" + imageBytes.length + " bytes)");
-                        return List.of(imageBytes);
-                    }
-                } catch (Exception e) {
-                    continue;
+
+            if (imageResources.isEmpty()) {
+                System.err.println("❌ No image files found in custom-images folder");
+                System.err.println(
+                        "💡 Found "
+                                + resources.length
+                                + " files, but none were images (.jpg, .jpeg, .png, .webp)");
+
+                for (Resource r : resources) {
+                    System.err.println("   - " + r.getFilename());
                 }
+
+                return Collections.emptyList();
             }
-            
-            System.err.println("❌ No custom image found for: " + locationId);
-            System.err.println("💡 Place images in: src/main/resources/custom-images/");
-            System.err.println("💡 Filename should be: " + sanitizedId + ".jpg (or .png, .jpeg, .webp)");
-            return Collections.emptyList();
-            
+
+            System.out.println("✅ Found " + imageResources.size() + " custom images");
+
+            Random random = new Random();
+            Resource randomResource = imageResources.get(random.nextInt(imageResources.size()));
+
+            System.out.println("🎲 Randomly selected: " + randomResource.getFilename());
+
+            byte[] imageBytes = randomResource.getInputStream().readAllBytes();
+
+            System.out.println("✅ Loaded random custom image (" + imageBytes.length + " bytes)");
+            return List.of(imageBytes);
+
         } catch (Exception e) {
-            System.err.println("❌ Error fetching custom image: " + e.getMessage());
+            System.err.println("❌ Error fetching random custom image: " + e.getMessage());
             e.printStackTrace();
             return Collections.emptyList();
         }
     }
 
-    // HF Gradio Space API - 2-step process with extensive debugging
     public HazardDetectionResult detectHazards(byte[] imageBytes) {
         try {
             System.out.println("🤖 Starting Gradio API call...");
             System.out.println("📊 Image size: " + imageBytes.length + " bytes");
 
             if (imageBytes.length > 500000) {
-                System.out.println("⚠️ WARNING: Image is large (" + imageBytes.length + " bytes), this might cause issues");
+                System.out.println(
+                        "⚠️ WARNING: Image is large ("
+                                + imageBytes.length
+                                + " bytes), this might cause issues");
             }
 
-            // Step 1: Convert image to base64 with EXACT Gradio API format
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
             String dataUrl = "data:image/jpeg;base64," + base64Image;
             System.out.println("✅ Base64 encoded (length: " + base64Image.length() + ")");
 
-            // THIS IS THE EXACT FORMAT from Gradio API docs
             Map<String, Object> imageDict = new HashMap<>();
-            imageDict.put("path", null);  // Not using local path
-            imageDict.put("url", dataUrl);  // Using base64 data URL
+            imageDict.put("path", null);
+            imageDict.put("url", dataUrl);
             imageDict.put("size", imageBytes.length);
             imageDict.put("orig_name", "camera_image.jpg");
             imageDict.put("mime_type", "image/jpeg");
@@ -217,7 +226,6 @@ public class ExternalApiService {
 
             System.out.println("📤 Sending POST request to Gradio...");
 
-            // POST to get event ID with better error handling
             String postResponse = webClient
                     .post()
                     .uri("https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards")
@@ -225,14 +233,19 @@ public class ExternalApiService {
                     .bodyValue(requestBody)
                     .retrieve()
                     .onStatus(
-                        status -> status.is4xxClientError() || status.is5xxServerError(),
-                        clientResponse -> clientResponse
-                            .bodyToMono(String.class)
-                            .flatMap(errorBody -> {
-                                System.err.println("❌ Gradio POST Error (" + clientResponse.statusCode() + "): " + errorBody);
-                                return Mono.error(new RuntimeException("Gradio API error: " + errorBody));
-                            })
-                    )
+                            status -> status.is4xxClientError() || status.is5xxServerError(),
+                            clientResponse -> clientResponse
+                                    .bodyToMono(String.class)
+                                    .flatMap(
+                                            errorBody -> {
+                                                System.err.println(
+                                                        "❌ Gradio POST Error ("
+                                                                + clientResponse.statusCode()
+                                                                + "): "
+                                                                + errorBody);
+                                                return Mono.error(
+                                                        new RuntimeException("Gradio API error: " + errorBody));
+                                            }))
                     .bodyToMono(String.class)
                     .block();
 
@@ -243,58 +256,67 @@ public class ExternalApiService {
 
             System.out.println("📥 POST Response: " + postResponse);
 
-            // Extract event_id
             JsonNode postJson = objectMapper.readTree(postResponse);
-            
+
             if (!postJson.has("event_id")) {
                 System.err.println("❌ No event_id in response: " + postResponse);
                 return new HazardDetectionResult(imageBytes, Collections.emptyList());
             }
-            
+
             String eventId = postJson.get("event_id").asText();
             System.out.println("✅ Got event ID: " + eventId);
 
-            // Step 2: Poll for results with retries
             System.out.println("🤖 Waiting for processing...");
-            
+
             String getResponse = null;
             int maxRetries = 10;
             int retryCount = 0;
-            
+
             while (retryCount < maxRetries) {
-                Thread.sleep(1000); // Wait 1 second between attempts
-                
+                Thread.sleep(1000);
+
                 System.out.println("🔄 Attempt " + (retryCount + 1) + "/" + maxRetries);
-                
+
                 try {
                     getResponse = webClient
                             .get()
-                            .uri("https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards/" + eventId)
+                            .uri(
+                                    "https://sdl11-intersection-hazard-api.hf.space/gradio_api/call/detect_hazards/"
+                                            + eventId)
                             .retrieve()
                             .onStatus(
-                                status -> status.is4xxClientError() || status.is5xxServerError(),
-                                clientResponse -> clientResponse
-                                    .bodyToMono(String.class)
-                                    .flatMap(errorBody -> {
-                                        System.err.println("❌ Gradio GET Error (" + clientResponse.statusCode() + "): " + errorBody);
-                                        return Mono.error(new RuntimeException("Gradio GET error: " + errorBody));
-                                    })
-                            )
+                                    status -> status.is4xxClientError() || status.is5xxServerError(),
+                                    clientResponse -> clientResponse
+                                            .bodyToMono(String.class)
+                                            .flatMap(
+                                                    errorBody -> {
+                                                        System.err.println(
+                                                                "❌ Gradio GET Error ("
+                                                                        + clientResponse.statusCode()
+                                                                        + "): "
+                                                                        + errorBody);
+                                                        return Mono.error(
+                                                                new RuntimeException("Gradio GET error: " + errorBody));
+                                                    }))
                             .bodyToMono(String.class)
                             .block();
-                    
+
                     if (getResponse != null && getResponse.contains("data:")) {
                         System.out.println("✅ Got response with data!");
                         break;
                     }
-                    
-                    System.out.println("⏳ Still processing... (response: " + 
-                        (getResponse != null ? getResponse.substring(0, Math.min(100, getResponse.length())) : "null") + ")");
-                    
+
+                    System.out.println(
+                            "⏳ Still processing... (response: "
+                                    + (getResponse != null
+                                            ? getResponse.substring(0, Math.min(100, getResponse.length()))
+                                            : "null")
+                                    + ")");
+
                 } catch (Exception e) {
                     System.err.println("⚠️ GET attempt failed: " + e.getMessage());
                 }
-                
+
                 retryCount++;
             }
 
@@ -304,13 +326,13 @@ public class ExternalApiService {
             }
 
             System.out.println("📥 Full GET Response length: " + getResponse.length());
-            System.out.println("📥 First 500 chars: " + getResponse.substring(0, Math.min(500, getResponse.length())));
+            System.out.println(
+                    "📥 First 500 chars: " + getResponse.substring(0, Math.min(500, getResponse.length())));
 
-            // Parse SSE response
             List<HazardTag> detections = new ArrayList<>();
             byte[] labeledImage = imageBytes;
             String[] lines = getResponse.split("\n");
-            
+
             System.out.println("📋 Processing " + lines.length + " response lines...");
 
             for (String line : lines) {
@@ -318,7 +340,9 @@ public class ExternalApiService {
                     System.err.println("❌❌❌ GRADIO SPACE ERROR ❌❌❌");
                     System.err.println("The Gradio Space encountered an error processing the image.");
                     System.err.println("Possible causes:");
-                    System.err.println("  1. Space is sleeping - Visit https://sdl11-intersection-hazard-api.hf.space/ to wake it");
+                    System.err.println(
+                            "  1. Space is sleeping - Visit https://sdl11-intersection-hazard-api.hf.space/ to"
+                                    + " wake it");
                     System.err.println("  2. Model file (best.pt) is missing or corrupted");
                     System.err.println("  3. Image is too large or in wrong format");
                     System.err.println("  4. Python code has a bug");
@@ -326,60 +350,63 @@ public class ExternalApiService {
                     System.err.println("❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌");
                     return new HazardDetectionResult(imageBytes, Collections.emptyList());
                 }
-                
+
                 if (line.startsWith("data: ")) {
                     String jsonData = line.substring(6);
-                    
-                    // Skip null data
+
                     if (jsonData.trim().equals("null")) {
                         System.out.println("⚠️ Skipping null data line");
                         continue;
                     }
-                    
-                    System.out.println("🔍 Processing data line: " + jsonData.substring(0, Math.min(200, jsonData.length())));
-                    
+
+                    System.out.println(
+                            "🔍 Processing data line: "
+                                    + jsonData.substring(0, Math.min(200, jsonData.length())));
+
                     try {
                         JsonNode eventData = objectMapper.readTree(jsonData);
 
                         if (eventData.isArray() && eventData.size() >= 2) {
                             System.out.println("✅ Found array with " + eventData.size() + " elements");
-                            
-                            // First element: labeled image
+
                             JsonNode imageNode = eventData.get(0);
                             System.out.println("🖼️ Image node type: " + imageNode.getNodeType());
-                            System.out.println("🖼️ Image node content: " + imageNode.toString().substring(0, Math.min(300, imageNode.toString().length())));
-                            
+                            System.out.println(
+                                    "🖼️ Image node content: "
+                                            + imageNode
+                                                    .toString()
+                                                    .substring(0, Math.min(300, imageNode.toString().length())));
+
                             if (imageNode != null && imageNode.has("url")) {
                                 String imageUrl = imageNode.get("url").asText();
                                 System.out.println("📥 Downloading labeled image from: " + imageUrl);
-                                
-                                byte[] downloadedImage = webClient
-                                        .get()
-                                        .uri(imageUrl)
-                                        .retrieve()
-                                        .bodyToMono(byte[].class)
-                                        .block();
-                                
+
+                                byte[] downloadedImage = webClient.get().uri(imageUrl).retrieve()
+                                        .bodyToMono(byte[].class).block();
+
                                 if (downloadedImage != null && downloadedImage.length > 0) {
                                     labeledImage = downloadedImage;
-                                    System.out.println("✅ Downloaded labeled image (" + labeledImage.length + " bytes)");
+                                    System.out.println(
+                                            "✅ Downloaded labeled image (" + labeledImage.length + " bytes)");
                                 }
                             } else if (imageNode != null && imageNode.has("path")) {
                                 String path = imageNode.get("path").asText();
-                                System.out.println("🖼️ Image path: " + path.substring(0, Math.min(100, path.length())));
-                                
+                                System.out.println(
+                                        "🖼️ Image path: " + path.substring(0, Math.min(100, path.length())));
+
                                 if (path.startsWith("data:image")) {
                                     String base64Data = path.split(",")[1];
                                     labeledImage = Base64.getDecoder().decode(base64Data);
-                                    System.out.println("✅ Extracted labeled image from base64 (" + labeledImage.length + " bytes)");
+                                    System.out.println(
+                                            "✅ Extracted labeled image from base64 (" + labeledImage.length
+                                                    + " bytes)");
                                 }
                             }
 
-                            // Second element: detections
                             JsonNode detectionData = eventData.get(1);
                             System.out.println("🎯 Detection node type: " + detectionData.getNodeType());
                             System.out.println("🎯 Detection data: " + detectionData.toString());
-                            
+
                             if (detectionData.isObject()) {
                                 parseDetectionResults(detectionData, detections);
                             } else if (detectionData.isArray()) {
@@ -396,7 +423,11 @@ public class ExternalApiService {
                 }
             }
 
-            System.out.println("✅ Final result: " + detections.size() + " detections, image size: " + labeledImage.length);
+            System.out.println(
+                    "✅ Final result: "
+                            + detections.size()
+                            + " detections, image size: "
+                            + labeledImage.length);
             return new HazardDetectionResult(labeledImage, detections);
 
         } catch (Exception e) {
@@ -407,7 +438,6 @@ public class ExternalApiService {
     }
 
     private void parseDetectionResults(JsonNode node, List<HazardTag> detections) {
-        // Check for common detection result formats
         if (node.has("predictions") && node.get("predictions").isArray()) {
             for (JsonNode pred : node.get("predictions")) {
                 parseDetection(pred, detections);
@@ -486,11 +516,10 @@ public class ExternalApiService {
     }
 
     public String generateDescription(List<HazardTag> detections, boolean isSpike, double score) {
-        // If no detections, return a simple message
         if (detections.isEmpty()) {
             return "No hazards detected at this location. Traffic conditions appear normal.";
         }
-        
+
         try {
             String tagsStr = detections.stream()
                     .map(t -> t.label() + " (" + String.format("%.2f", t.confidence()) + ")")
@@ -548,11 +577,7 @@ public class ExternalApiService {
 
         } catch (Exception e) {
             System.err.println("DeepSeek error: " + e.getMessage());
-            // Return a fallback description instead of generic error
-            String tagsStr = detections.stream()
-                    .map(HazardTag::label)
-                    .reduce((a, b) -> a + ", " + b)
-                    .orElse("none");
+            String tagsStr = detections.stream().map(HazardTag::label).reduce((a, b) -> a + ", " + b).orElse("none");
             return "Detected: " + tagsStr + ". Score: " + score + (isSpike ? " (SPIKE ALERT)" : "");
         }
     }
@@ -567,18 +592,15 @@ public class ExternalApiService {
 
     public void saveHazardRecord(HazardResponse hazard) {
         try {
-            // 1. STRICT PAYLOAD: Only send exactly what the DB has
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("location_id", hazard.getLocationString());
-            double dbScore = fetchHistoricalAverage(hazard.getLocationString()); // from DB
-            double currentScore = hazard.getScore();
-            payload.put("score", dbScore + currentScore / 2);
+            payload.put("score", hazard.getScore());
             payload.put("description", hazard.getDescription());
             payload.put("timestamp", java.time.OffsetDateTime.now().toString());
 
-            System.out.println("💾 Syncing: " + hazard.getLocationString());
+            System.out.println(
+                    "💾 Syncing: " + hazard.getLocationString() + " with score: " + hazard.getScore());
 
-            // 2. The UPSERT call
             String response = webClient
                     .post()
                     .uri(supabaseUrl + "/hazards?on_conflict=location_id")
@@ -599,13 +621,12 @@ public class ExternalApiService {
                     .bodyToMono(String.class)
                     .block();
 
-            // 3. Extract the UUID so React can render the card
             if (response != null) {
                 JsonNode responseJson = objectMapper.readTree(response);
                 if (responseJson.isArray() && !responseJson.isEmpty()) {
                     String dbUuid = responseJson.get(0).get("id").asText();
                     hazard.setId(dbUuid);
-                    System.out.println("✅ DB Synced! UUID is: " + dbUuid);
+                    System.out.println("✅ DB Synced! UUID: " + dbUuid + ", Score: " + hazard.getScore());
                 }
             }
 

@@ -17,45 +17,53 @@ public class ProcessingService {
 
   public HazardResponse processLocation(String locationStr) {
     System.out.println("🚀 Processing location: " + locationStr);
-    
-    // 1. Fetch images from the Vancouver camera
+
+    // 1. Fetch historical average FIRST (before current detection)
+    double averageScore = apiService.fetchHistoricalAverage(locationStr);
+    System.out.println("📊 Historical average score: " + averageScore);
+
+    // 2. Fetch images from the Vancouver camera or custom images
     List<byte[]> images = apiService.fetchCameraImages(locationStr);
     if (images.isEmpty()) {
       System.out.println("⚠️ No images found for: " + locationStr);
       return null;
     }
 
-    // 2. Use the first image for analysis
+    // 3. Use the first image for analysis
     byte[] rawImage = images.get(0);
     System.out.println("📸 Got raw image: " + rawImage.length + " bytes");
 
-    // 3. Get detections AND labeled image from Hugging Face Gradio Space
+    // 4. Get detections AND labeled image from Hugging Face Gradio Space
     ExternalApiService.HazardDetectionResult result = apiService.detectHazards(rawImage);
     List<ExternalApiService.HazardTag> detections = result.detections();
-    byte[] labeledImage = result.labeledImage(); // ← This contains bounding boxes!
-    
+    byte[] labeledImage = result.labeledImage();
+
     System.out.println("🎯 Got " + detections.size() + " detections");
     System.out.println("🖼️ Labeled image size: " + labeledImage.length + " bytes");
 
-    // 4. Transform tags and calculate scores
+    // 5. Transform tags and calculate current score
     DetailedTags details = analyzeTags(detections);
     double currentScore = calculateHazardScore(details);
-    System.out.println("📊 Hazard score: " + currentScore);
+    System.out.println("📊 Current hazard score: " + currentScore);
 
-    // 5. Historical Analysis from Supabase
-    double averageScore = apiService.fetchHistoricalAverage(locationStr);
+    // 6. Calculate delta and spike detection
     double delta = Math.max(0, currentScore - averageScore);
     boolean isSpike = delta > (averageScore * 0.2) && currentScore > 10;
-    System.out.println("📈 Average score: " + averageScore + ", Delta: " + delta + ", Spike: " + isSpike);
 
-    // 6. AI Description logic (DeepSeek)
+    System.out.println("📈 Score Analysis:");
+    System.out.println("   Current: " + currentScore);
+    System.out.println("   Average: " + averageScore);
+    System.out.println("   Delta: " + delta);
+    System.out.println("   Spike: " + isSpike);
+
+    // 7. AI Description logic (DeepSeek)
     String description = apiService.generateDescription(detections, isSpike, currentScore);
 
-    // 7. Prepare LABELED Image for Frontend (with bounding boxes)
+    // 8. Prepare LABELED Image for Frontend (with bounding boxes)
     String base64Image = "data:image/jpeg;base64," + Base64.getEncoder().encodeToString(labeledImage);
     System.out.println("✅ Base64 image prepared for frontend");
 
-    // 8. Build final response
+    // 9. Build final response
     HazardResponse response = HazardResponse.builder()
         .id(locationStr)
         .locationString(locationStr)
@@ -70,19 +78,25 @@ public class ProcessingService {
         .info(details)
         .build();
 
-    // 9. DATABASE UPDATE: Persist the results to Supabase
-    // This ensures the next "historical average" check includes this current
-    // detection
+    // 10. DATABASE UPDATE: Persist the results to Supabase
     apiService.saveHazardRecord(response);
 
     System.out.println("✅ Processing complete for: " + locationStr);
+    System.out.println(
+        "   Final response - Score: "
+            + response.getScore()
+            + ", Avg: "
+            + response.getAvg()
+            + ", Delta: "
+            + response.getDelta());
+
     return response;
   }
 
   private DetailedTags analyzeTags(List<ExternalApiService.HazardTag> detections) {
     DetailedTags tags = DetailedTags.builder()
         .rawTags(detections.stream().map(ExternalApiService.HazardTag::label).toList())
-        .numberOfDebrisItems(0) // Initialize counts to 0
+        .numberOfDebrisItems(0)
         .pedestrianAmount(0)
         .build();
 
@@ -102,7 +116,7 @@ public class ProcessingService {
       if (label.contains("crash") || label.contains("accident") || label.contains("wreck"))
         tags.setAccident(true);
     }
-    
+
     System.out.println("🏷️ Analyzed tags: " + tags.getRawTags());
     return tags;
   }
@@ -119,14 +133,21 @@ public class ProcessingService {
       score += 10;
     score += (tags.getNumberOfDebrisItems() * 5);
     score += (tags.getPedestrianAmount() * 0.5);
-    
-    System.out.println("🔢 Score breakdown - PersonLaying: " + tags.isPersonLaying() + 
-                       ", Accident: " + tags.isAccident() + 
-                       ", Tree: " + tags.isFallenTree() + 
-                       ", Cones: " + tags.isCones() + 
-                       ", Debris: " + tags.getNumberOfDebrisItems() + 
-                       ", Pedestrians: " + tags.getPedestrianAmount());
-    
+
+    System.out.println(
+        "🔢 Score breakdown - PersonLaying: "
+            + tags.isPersonLaying()
+            + ", Accident: "
+            + tags.isAccident()
+            + ", Tree: "
+            + tags.isFallenTree()
+            + ", Cones: "
+            + tags.isCones()
+            + ", Debris: "
+            + tags.getNumberOfDebrisItems()
+            + ", Pedestrians: "
+            + tags.getPedestrianAmount());
+
     return score;
   }
 }
