@@ -1,6 +1,6 @@
-package com.raincity.hazard.service;
+package com.rainCity.hazard.service;
 
-import com.raincity.hazard.model.HazardModels.*;
+import com.rainCity.hazard.model.HazardModels.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -86,7 +86,7 @@ public class ProcessingService {
     return score;
   }
 
-  //do fix here maybe just map of string names
+  // do fix here maybe just map of string names
   private Coordinates getCoords(String loc) {
     return Coordinates.builder().lat(49.2827).lng(-123.1207).build();
   }
