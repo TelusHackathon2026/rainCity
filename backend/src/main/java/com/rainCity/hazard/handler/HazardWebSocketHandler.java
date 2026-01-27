@@ -29,7 +29,6 @@ public class HazardWebSocketHandler {
   @MessageMapping("/monitor-intersections")
   public void handleMonitorRequest(@Payload LocationRequest request) {
     if (request != null && request.getLocations() != null) {
-      // Adds the new list of locations to our active monitoring set
       monitoredLocations.addAll(request.getLocations());
       System.out.println("Backend is now tracking: " + monitoredLocations);
     }
@@ -44,7 +43,6 @@ public class HazardWebSocketHandler {
       try {
         HazardResponse response = processingService.processLocation(loc);
         if (response != null) {
-          // This pushes to your React client.subscribe('/topic/traffic-alerts')
           messagingTemplate.convertAndSend("/topic/traffic-alerts", response);
         }
       } catch (Exception e) {

@@ -7,18 +7,15 @@ import lombok.Data;
 
 public class HazardModels {
 
-  // 1. Message from Frontend
   @Data
   public static class LocationRequest {
-@JsonProperty("intersections")
+    @JsonProperty("intersections")
     private List<String> locations;
 
-    // Add this manually
     public List<String> getLocations() {
       return locations;
     }
 
-    // Explicit setter for Jackson
     public void setLocations(List<String> locations) {
       this.locations = locations;
     }
@@ -27,13 +24,13 @@ public class HazardModels {
   public static class HazardResponse {
     private String id;
 
-    @JsonProperty("location") // React expects 'location'
+    @JsonProperty("location")
     private String locationString;
 
     private Coordinates coords;
     private double score;
 
-    @JsonProperty("average") // React expects 'average'
+    @JsonProperty("average")
     private double avg;
 
     private double delta;
@@ -41,10 +38,10 @@ public class HazardModels {
     private String description;
     private String timestamp;
 
-    @JsonProperty("img") // React expects 'img'
+    @JsonProperty("img")
     private String imageBase64;
 
-    @JsonProperty("detectedObjects") // React expects 'detectedObjects'
+    @JsonProperty("detectedObjects")
     private DetailedTags info;
 
     // Constructor

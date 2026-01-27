@@ -69,9 +69,9 @@ public class ExternalApiService {
                 cameraCache.put(info.name().toLowerCase(), info);
                 cameraCache.put(info.mapId().toLowerCase(), info);
             }
-            System.out.println("✅ Loaded " + cameraCache.size() + " camera entries");
+            System.out.println("Loaded " + cameraCache.size() + " camera entries");
         } catch (Exception e) {
-            System.err.println("❌ Load Error: " + e.getMessage());
+            System.err.println(" Load Error: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -80,13 +80,13 @@ public class ExternalApiService {
         CameraInfo camera = cameraCache.get(locationId.toLowerCase());
 
         if (camera == null) {
-            System.out.println("⚠️ Camera not found in data.json: " + locationId);
-            System.out.println("🔍 Fetching random custom image...");
+            System.out.println(" Camera not found in data.json: " + locationId);
+            System.out.println(" Fetching random custom image...");
             return fetchCustomImages(locationId);
         }
 
         try {
-            System.out.println("🎥 Fetching camera: " + camera.name() + " from " + camera.url());
+            System.out.println(" Fetching camera: " + camera.name() + " from " + camera.url());
 
             String html = webClient
                     .get()
@@ -104,7 +104,7 @@ public class ExternalApiService {
                 if (!src.startsWith("http"))
                     src = "https://trafficcams.vancouver.ca" + (src.startsWith("/") ? "" : "/") + src;
 
-                System.out.println("📥 Downloading image from: " + src);
+                System.out.println(" Downloading image from: " + src);
 
                 byte[] img = webClient
                         .get()
@@ -117,14 +117,14 @@ public class ExternalApiService {
 
                 if (img != null && img.length > 2000) {
                     images.add(img);
-                    System.out.println("✅ Image downloaded: " + img.length + " bytes");
+                    System.out.println(" Image downloaded: " + img.length + " bytes");
                 }
             }
 
-            System.out.println("✅ Fetched " + images.size() + " image(s)");
+            System.out.println(" Fetched " + images.size() + " image(s)");
             return images;
         } catch (Exception e) {
-            System.err.println("❌ Fetch error: " + e.getMessage());
+            System.err.println(" Fetch error: " + e.getMessage());
             e.printStackTrace();
             return Collections.emptyList();
         }
@@ -133,17 +133,17 @@ public class ExternalApiService {
     private List<byte[]> fetchCustomImages(String locationId) {
         try {
             System.out.println(
-                    "🔍 Location '" + locationId + "' not in data.json - fetching random custom image");
+                    " Location '" + locationId + "' not in data.json - fetching random custom image");
 
             ResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
             Resource[] resources = resolver.getResources("classpath:custom-images/*");
 
-            System.out.println("📂 Found " + resources.length + " total files in custom-images folder");
+            System.out.println(" Found " + resources.length + " total files in custom-images folder");
 
             if (resources.length == 0) {
-                System.err.println("❌ No files found in custom-images folder");
-                System.err.println("💡 Place images in: src/main/resources/custom-images/");
-                System.err.println("💡 Supported formats: .jpg, .jpeg, .png, .webp");
+                System.err.println(" No files found in custom-images folder");
+                System.err.println(" Place images in: src/main/resources/custom-images/");
+                System.err.println(" Supported formats: .jpg, .jpeg, .png, .webp");
                 return Collections.emptyList();
             }
 
@@ -159,15 +159,15 @@ public class ExternalApiService {
                             || lowerFilename.endsWith(".png")
                             || lowerFilename.endsWith(".webp")) {
                         imageResources.add(resource);
-                        System.out.println("   ✅ Added image: " + filename);
+                        System.out.println("    Added image: " + filename);
                     }
                 }
             }
 
             if (imageResources.isEmpty()) {
-                System.err.println("❌ No image files found in custom-images folder");
+                System.err.println(" No image files found in custom-images folder");
                 System.err.println(
-                        "💡 Found "
+                        " Found "
                                 + resources.length
                                 + " files, but none were images (.jpg, .jpeg, .png, .webp)");
 
@@ -178,20 +178,20 @@ public class ExternalApiService {
                 return Collections.emptyList();
             }
 
-            System.out.println("✅ Found " + imageResources.size() + " custom images");
+            System.out.println(" Found " + imageResources.size() + " custom images");
 
             Random random = new Random();
             Resource randomResource = imageResources.get(random.nextInt(imageResources.size()));
 
-            System.out.println("🎲 Randomly selected: " + randomResource.getFilename());
+            System.out.println(" Randomly selected: " + randomResource.getFilename());
 
             byte[] imageBytes = randomResource.getInputStream().readAllBytes();
 
-            System.out.println("✅ Loaded random custom image (" + imageBytes.length + " bytes)");
+            System.out.println(" Loaded random custom image (" + imageBytes.length + " bytes)");
             return List.of(imageBytes);
 
         } catch (Exception e) {
-            System.err.println("❌ Error fetching random custom image: " + e.getMessage());
+            System.err.println(" Error fetching random custom image: " + e.getMessage());
             e.printStackTrace();
             return Collections.emptyList();
         }
@@ -199,19 +199,17 @@ public class ExternalApiService {
 
     public HazardDetectionResult detectHazards(byte[] imageBytes) {
         try {
-            System.out.println("🤖 Starting Gradio API call...");
-            System.out.println("📊 Image size: " + imageBytes.length + " bytes");
+            System.out.println(" Starting Gradio API call...");
+            System.out.println(" Image size: " + imageBytes.length + " bytes");
 
             if (imageBytes.length > 500000) {
                 System.out.println(
-                        "⚠️ WARNING: Image is large ("
-                                + imageBytes.length
-                                + " bytes), this might cause issues");
+                        " WARNING: Image is large (" + imageBytes.length + " bytes), this might cause issues");
             }
 
             String base64Image = Base64.getEncoder().encodeToString(imageBytes);
             String dataUrl = "data:image/jpeg;base64," + base64Image;
-            System.out.println("✅ Base64 encoded (length: " + base64Image.length() + ")");
+            System.out.println(" Base64 encoded (length: " + base64Image.length() + ")");
 
             Map<String, Object> imageDict = new HashMap<>();
             imageDict.put("path", null);
@@ -224,7 +222,7 @@ public class ExternalApiService {
 
             Map<String, Object> requestBody = Map.of("data", List.of(imageDict));
 
-            System.out.println("📤 Sending POST request to Gradio...");
+            System.out.println(" Sending POST request to Gradio...");
 
             String postResponse = webClient
                     .post()
@@ -254,7 +252,7 @@ public class ExternalApiService {
                 return new HazardDetectionResult(imageBytes, Collections.emptyList());
             }
 
-            System.out.println("📥 POST Response: " + postResponse);
+            System.out.println(" POST Response: " + postResponse);
 
             JsonNode postJson = objectMapper.readTree(postResponse);
 
@@ -264,7 +262,7 @@ public class ExternalApiService {
             }
 
             String eventId = postJson.get("event_id").asText();
-            System.out.println("✅ Got event ID: " + eventId);
+            System.out.println(" Got event ID: " + eventId);
 
             System.out.println("🤖 Waiting for processing...");
 
@@ -325,9 +323,9 @@ public class ExternalApiService {
                 return new HazardDetectionResult(imageBytes, Collections.emptyList());
             }
 
-            System.out.println("📥 Full GET Response length: " + getResponse.length());
+            System.out.println(" Full GET Response length: " + getResponse.length());
             System.out.println(
-                    "📥 First 500 chars: " + getResponse.substring(0, Math.min(500, getResponse.length())));
+                    " First 500 chars: " + getResponse.substring(0, Math.min(500, getResponse.length())));
 
             List<HazardTag> detections = new ArrayList<>();
             byte[] labeledImage = imageBytes;
