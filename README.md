@@ -105,16 +105,16 @@ npm run dev
 
 <h2>Roadmap</h2>
 <ul>
-  <li>âœ… Train YOLOv11 model for hazard detection</li>
-  <li>âœ… Connect backend to live traffic camera feeds</li>
-  <li>âœ… Implement real-time hazard scoring logic</li>
-  <li>âœ… Integrate Supabase for historical analysis</li>
-  <li>âœ… Build React dashboard to display alerts</li>
-  <li>âœ… Implement WebSocket updates for live monitoring</li>
-  <li>â¬œ AI-generated descriptions for detected hazards</li>
-  <li>â¬œ Dataset Expansion and Optimization</li>
-  <li>â¬œ Interactive Map Feature</li>
-  <li>â¬œ Multi City Expansion</li>
+  <li>Train YOLOv11 model for hazard detection</li>
+  <li>Connect backend to live traffic camera feeds</li>
+  <li> Implement real-time hazard scoring logic</li>
+  <li> Integrate Supabase for historical analysis</li>
+  <li> Build React dashboard to display alerts</li>
+  <li> Implement WebSocket updates for live monitoring</li>
+  <li> AI-generated descriptions for detected hazards</li>
+  <li> Dataset Expansion and Optimization</li>
+  <li> Interactive Map Feature</li>
+  <li> Multi City Expansion</li>
 </ul>
 
 <p class="center"><a href="#readme-top">back to top</a></p>
